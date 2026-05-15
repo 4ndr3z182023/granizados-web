@@ -69,13 +69,3 @@ def update_data():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(debug=True, host='0.0.0.0', port=port)
-@app.route('/reset_data', methods=['POST'])
-def reset_data():
-    try:
-        # Referencia a la tabla de ventas
-        ref = db.reference('ventas_granizados')
-        # Borramos todo el contenido
-        ref.delete()
-        return jsonify({"status": "success", "message": "Contador reiniciado"}), 200
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
