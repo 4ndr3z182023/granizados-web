@@ -107,24 +107,7 @@
                 tabla.innerHTML = html;
                 tVentas.innerText = data.length;
                 tDinero.innerText = "$" + totalSuma.toLocaleString();
-                <button onclick="resetContador()" style="background-color: #ff4444; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-bottom: 20px;">
-    🔄 Reiniciar Contador (Corte de Caja)
-</button>
-
-<script>
-function resetContador() {
-    if (confirm("¿Estás seguro de que quieres borrar todas las ventas actuales?")) {
-        fetch('/reset_data', { method: 'POST' })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === "success") {
-                    alert("Ventas reiniciadas correctamente");
-                    location.reload(); // Recarga la página para ver el 0
-                }
-            });
-    }
-}
-</script>
+                
                 // Calcular porcentaje de meta
                 let porc = (totalSuma / META) * 100;
                 barra.style.width = Math.min(porc, 100) + "%";
