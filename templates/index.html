@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Control Granizados</title>
+    <title>Control Granizados - Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
@@ -43,260 +43,100 @@
         }
 
         .logo { display: flex; align-items: center; gap: 12px; }
-
-        .logo-icon {
-            width: 38px; height: 38px;
-            background: var(--accent);
-            border-radius: 10px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 20px;
-        }
-
-        .logo h1 {
-            font-family: 'Syne', sans-serif;
-            font-size: 1.2rem;
-            font-weight: 800;
-            letter-spacing: -0.02em;
-        }
-
+        .logo-icon { width: 38px; height: 38px; background: var(--accent); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+        .logo h1 { font-family: 'Syne', sans-serif; font-size: 1.2rem; font-weight: 800; }
         .logo span { color: var(--accent); }
 
         .header-right { display: flex; align-items: center; gap: 16px; }
+        .btn-logout { background: transparent; border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 0.8rem; transition: all 0.2s; }
+        .btn-logout:hover { border-color: var(--danger); color: var(--danger); }
 
-        .live-dot {
-            display: flex; align-items: center; gap: 8px;
-            font-size: 0.78rem;
-            font-family: 'DM Mono', monospace;
-            transition: color 0.3s;
-        }
-
-        .live-dot .dot {
-            width: 8px; height: 8px;
-            border-radius: 50%;
-            background: var(--accent);
-            animation: pulse 2s infinite;
-            transition: background 0.3s;
-        }
-
+        .live-dot { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; font-family: 'DM Mono', monospace; }
+        .live-dot .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; }
         .live-dot.error .dot { background: var(--danger); animation: none; }
-        .live-dot.error { color: var(--danger); }
-        .live-dot.ok { color: var(--muted); }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(0.8); }
-        }
-
-        .controls {
-            padding: 20px 32px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-
-        .date-input {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 9px 14px;
-            border-radius: 10px;
-            font-family: 'DM Mono', monospace;
-            font-size: 0.85rem;
-            outline: none;
-            cursor: pointer;
-            transition: border-color 0.2s;
-        }
-
-        .date-input:focus { border-color: var(--accent); }
-
-        .btn {
-            padding: 9px 18px;
-            border-radius: 10px;
-            border: none;
-            font-family: 'DM Sans', sans-serif;
-            font-weight: 600;
-            font-size: 0.85rem;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex; align-items: center; gap: 6px;
-        }
-
+        .controls { padding: 20px 32px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .date-input { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 9px 14px; border-radius: 10px; font-family: 'DM Mono', monospace; }
+        .btn { padding: 9px 18px; border-radius: 10px; border: none; font-weight: 600; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
         .btn-primary { background: var(--accent); color: #0d0f14; }
         .btn-primary:hover { background: #00c988; transform: translateY(-1px); }
         .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
         .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+        .btn-success { background: #10b981; color: white; }
+        .btn-success:hover { background: #059669; }
 
         main { padding: 0 32px 40px; }
 
-        .kpi-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .kpi-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--card-radius);
-            padding: 22px 24px;
-            position: relative;
-            overflow: hidden;
-            animation: fadeUp 0.5s ease both;
-        }
-
-        .kpi-card::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 3px;
-        }
-
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--card-radius); padding: 22px 24px; position: relative; overflow: hidden; animation: fadeUp 0.5s ease both; }
+        .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
         .kpi-card.green::before { background: var(--accent); }
         .kpi-card.blue::before { background: var(--accent2); }
         .kpi-card.amber::before { background: var(--accent3); }
+        .kpi-card.purple::before { background: #8b5cf6; }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 
-        @keyframes fadeUp {
-            from { opacity: 0; transform: translateY(16px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .kpi-card:nth-child(2) { animation-delay: 0.08s; }
-        .kpi-card:nth-child(3) { animation-delay: 0.16s; }
-        .kpi-card:nth-child(4) { animation-delay: 0.24s; }
-
-        .kpi-label {
-            font-size: 0.75rem;
-            color: var(--muted);
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin-bottom: 10px;
-            font-weight: 600;
-        }
-
-        .kpi-value {
-            font-family: 'Syne', sans-serif;
-            font-size: 2rem;
-            font-weight: 800;
-            line-height: 1;
-            margin-bottom: 6px;
-            transition: all 0.4s ease;
-        }
-
-        .kpi-value.flash {
-            color: var(--accent);
-            transform: scale(1.05);
-        }
-
-        .kpi-sub {
-            font-size: 0.78rem;
-            color: var(--muted);
-            font-family: 'DM Mono', monospace;
-        }
+        .kpi-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; font-weight: 600; }
+        .kpi-value { font-family: 'Syne', sans-serif; font-size: 2rem; font-weight: 800; line-height: 1; margin-bottom: 6px; transition: all 0.4s ease; }
+        .kpi-value.flash { color: var(--accent); transform: scale(1.05); }
+        .kpi-sub { font-size: 0.78rem; color: var(--muted); font-family: 'DM Mono', monospace; }
 
         .meta-card { grid-column: span 2; }
+        .progress-track { background: var(--surface2); border-radius: 999px; height: 8px; margin-top: 14px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #00c8ff); border-radius: 999px; transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1); width: 0%; }
 
-        .progress-track {
-            background: var(--surface2);
-            border-radius: 999px;
-            height: 8px;
-            margin-top: 14px;
-            overflow: hidden;
-        }
+        .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+        @media (max-width: 900px) { .bottom-grid { grid-template-columns: 1fr; } .meta-card { grid-column: span 1; } }
 
-        .progress-fill {
+        .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--card-radius); padding: 24px; }
+        .panel-title { font-family: 'Syne', sans-serif; font-size: 0.95rem; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
+        .panel-badge { font-family: 'DM Mono', monospace; font-size: 0.72rem; background: var(--surface2); border: 1px solid var(--border); padding: 3px 8px; border-radius: 6px; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
             height: 100%;
-            background: linear-gradient(90deg, var(--accent), #00c8ff);
-            border-radius: 999px;
-            transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
-            width: 0%;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
         }
-
-        .progress-labels {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 8px;
-            font-size: 0.75rem;
-            color: var(--muted);
-            font-family: 'DM Mono', monospace;
-        }
-
-        .bottom-grid {
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        @media (max-width: 900px) {
-            .bottom-grid { grid-template-columns: 1fr; }
-            .meta-card { grid-column: span 1; }
-        }
-
-        .panel {
+        .modal-content {
             background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: var(--card-radius);
-            padding: 24px;
+            border-radius: 24px;
+            padding: 32px;
+            width: 90%;
+            max-width: 500px;
         }
-
-        .panel-title {
-            font-family: 'Syne', sans-serif;
-            font-size: 0.95rem;
-            font-weight: 700;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .panel-badge {
-            font-family: 'DM Mono', monospace;
-            font-size: 0.72rem;
-            background: var(--surface2);
+        .modal-content input, .modal-content textarea {
+            width: 100%;
+            margin-bottom: 16px;
+            padding: 12px;
+            background: var(--bg);
             border: 1px solid var(--border);
-            padding: 3px 8px;
-            border-radius: 6px;
-            color: var(--muted);
+            border-radius: 10px;
+            color: var(--text);
+            font-family: inherit;
         }
+        .modal-buttons { display: flex; gap: 12px; justify-content: flex-end; }
 
         .tabla-wrap { overflow-x: auto; }
-
         table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-
-        th {
-            text-align: left;
-            padding: 10px 14px;
-            font-size: 0.72rem;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: var(--muted);
-            font-weight: 600;
-            border-bottom: 1px solid var(--border);
-        }
-
-        td {
-            padding: 12px 14px;
-            border-bottom: 1px solid #1a1f2e;
-            font-family: 'DM Mono', monospace;
-            font-size: 0.82rem;
-        }
-
+        th { text-align: left; padding: 10px 14px; font-size: 0.72rem; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
+        td { padding: 12px 14px; border-bottom: 1px solid #1a1f2e; font-family: 'DM Mono', monospace; font-size: 0.82rem; }
         tr:hover td { background: var(--surface2); }
-        tr:last-child td { border-bottom: none; }
-
-        .badge {
-            display: inline-block;
-            padding: 3px 10px;
-            border-radius: 6px;
-            font-size: 0.72rem;
-            font-weight: 600;
-            font-family: 'DM Sans', sans-serif;
-        }
-
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 0.72rem; font-weight: 600; }
         .badge-cam { background: rgba(0,229,160,0.15); color: var(--accent); }
         .badge-manual { background: rgba(59,130,246,0.15); color: var(--accent2); }
+        .tabla-cuerpo-wrap { max-height: 380px; overflow-y: auto; }
+        .row-new td { animation: rowFlash 1.5s ease forwards; }
+        @keyframes rowFlash { from { background: rgba(0,229,160,0.2); } to { background: transparent; } }
+        .empty { text-align: center; padding: 40px; color: var(--muted); }
 
         #alerta-meta {
             background: linear-gradient(135deg, #065f46, #047857);
@@ -304,44 +144,30 @@
             border-radius: var(--card-radius);
             padding: 18px 24px;
             margin-bottom: 20px;
-            animation: slideIn 0.4s ease;
             display: flex;
             align-items: center;
             gap: 14px;
         }
-
         #alerta-meta.hidden { display: none; }
 
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
+        .toast-notification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-weight: bold;
+            z-index: 1000;
+            animation: slideInRight 0.3s ease, fadeOut 3s ease 2.5s forwards;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
-
-        .alerta-icon { font-size: 1.8rem; }
-        .alerta-text h3 { font-family: 'Syne', sans-serif; font-size: 1rem; }
-        .alerta-text p { font-size: 0.82rem; color: rgba(255,255,255,0.7); margin-top: 2px; }
-
-        .empty {
-            text-align: center;
-            padding: 40px;
-            color: var(--muted);
-            font-size: 0.85rem;
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
-
-        .empty .icon { font-size: 2.5rem; margin-bottom: 10px; }
-
-        .tabla-cuerpo-wrap { max-height: 380px; overflow-y: auto; }
-
-        ::-webkit-scrollbar { width: 5px; height: 5px; }
-        ::-webkit-scrollbar-track { background: var(--surface2); }
-        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
-
-        /* Animación nueva fila */
-        @keyframes rowFlash {
-            0% { background: rgba(0,229,160,0.2); }
-            100% { background: transparent; }
+        @keyframes fadeOut {
+            to { opacity: 0; visibility: hidden; }
         }
-        .row-new td { animation: rowFlash 1.5s ease forwards; }
     </style>
 </head>
 <body>
@@ -357,22 +183,28 @@
             <span id="estado-texto">CONECTANDO...</span>
         </div>
         <span id="reloj" style="font-family:'DM Mono',monospace;font-size:0.8rem;color:var(--muted);"></span>
+        <button class="btn-logout" onclick="cerrarSesion()">🚪 Salir</button>
     </div>
 </header>
 
 <div class="controls">
-    <input type="date" id="fecha-filtro" class="date-input" title="Filtrar por fecha">
+    <input type="date" id="fecha-filtro" class="date-input">
     <button class="btn btn-primary" onclick="aplicarFiltro()">⟳ Actualizar</button>
     <button class="btn btn-outline" onclick="exportarCSV()">↓ Exportar CSV</button>
+    <button class="btn btn-success" onclick="mostrarModalVenta()">
+        ✋ + Venta Manual
+    </button>
+    <button class="btn btn-outline" onclick="resetearNuevoDia()">
+        🌅 Nuevo Día
+    </button>
 </div>
 
 <main>
-
     <div id="alerta-meta" class="hidden">
         <div class="alerta-icon">🎉</div>
         <div class="alerta-text">
             <h3>¡Meta diaria alcanzada!</h3>
-            <p id="alerta-sub">Has superado los $103,833 del objetivo de hoy.</p>
+            <p id="alerta-sub"></p>
         </div>
     </div>
 
@@ -383,13 +215,8 @@
                 <div class="kpi-value" id="kpi-total">$0</div>
                 <div class="kpi-sub">de $103,833</div>
             </div>
-            <div class="progress-track">
-                <div class="progress-fill" id="barra-meta"></div>
-            </div>
-            <div class="progress-labels">
-                <span id="porc-meta">0%</span>
-                <span>Meta diaria</span>
-            </div>
+            <div class="progress-track"><div class="progress-fill" id="barra-meta"></div></div>
+            <div class="progress-labels"><span id="porc-meta">0%</span><span>Meta diaria</span></div>
         </div>
 
         <div class="kpi-card blue">
@@ -404,10 +231,16 @@
             <div class="kpi-sub">10% sobre ventas</div>
         </div>
 
-        <div class="kpi-card" style="border-top:3px solid var(--accent);">
+        <div class="kpi-card purple">
+            <div class="kpi-label">Ganancia Neta</div>
+            <div class="kpi-value" id="kpi-ganancia">$0</div>
+            <div class="kpi-sub" id="kpi-costo">Costo: $0</div>
+        </div>
+
+        <div class="kpi-card">
             <div class="kpi-label">Tanque de mezcla</div>
             <div class="kpi-value" id="kpi-litros">12.0 L</div>
-            <div class="kpi-sub" id="kpi-litros-sub">Sin consumo registrado</div>
+            <div class="kpi-sub" id="kpi-litros-sub"></div>
             <div class="progress-track" style="margin-top:12px;">
                 <div class="progress-fill" id="barra-tanque" style="background:linear-gradient(90deg,#3b82f6,#06b6d4);"></div>
             </div>
@@ -416,47 +249,61 @@
 
     <div class="bottom-grid">
         <div class="panel">
-            <div class="panel-title">
-                Ventas por hora
-                <span class="panel-badge" id="chart-fecha">HOY</span>
-            </div>
+            <div class="panel-title">Ventas por hora <span class="panel-badge" id="chart-fecha">HOY</span></div>
             <canvas id="grafica-horas" height="220"></canvas>
         </div>
 
         <div class="panel">
+            <div class="panel-title">Ventas últimos 7 días <span class="panel-badge">Semanal</span></div>
+            <canvas id="grafica-semanal" height="220"></canvas>
+        </div>
+
+        <div class="panel" style="grid-column: 1/-1;">
             <div class="panel-title">
-                Registro de actividad
+                Registro de actividad 
                 <span class="panel-badge" id="badge-count">0 registros</span>
+                <span class="panel-badge" style="background:rgba(0,229,160,0.2);">📹 Cámara activa</span>
             </div>
             <div class="tabla-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Hora</th>
-                            <th>Evento</th>
-                            <th>Precio</th>
-                            <th>Comisión</th>
-                        </tr>
-                    </thead>
-                </table>
                 <div class="tabla-cuerpo-wrap">
                     <table>
+                        <thead>
+                            <tr>
+                                <th>Hora</th>
+                                <th>Evento</th>
+                                <th>Precio</th>
+                                <th>Comisión</th>
+                                <th>Observación</th>
+                            </tr>
+                        </thead>
                         <tbody id="tabla-cuerpo">
-                            <tr><td colspan="4" class="empty"><div class="icon">📊</div>Conectando a Firebase...</td></tr>
+                            <tr><td colspan="5" class="empty"><div class="icon">📊</div>Cargando...</td></tr>
                         </tbody>
                     </table>
                 </div>
             </div>
         </div>
     </div>
-
 </main>
+
+<!-- Modal para venta manual -->
+<div id="modal-venta" class="modal">
+    <div class="modal-content">
+        <h3 style="margin-bottom: 20px;">📝 Registrar Venta Manual</h3>
+        <input type="number" id="venta-precio" placeholder="Valor de la venta" value="5000">
+        <textarea id="venta-observacion" placeholder="Observación (opcional)" rows="2"></textarea>
+        <div class="modal-buttons">
+            <button class="btn btn-outline" onclick="cerrarModalVenta()">Cancelar</button>
+            <button class="btn btn-primary" onclick="registrarVentaManual()">Registrar</button>
+        </div>
+    </div>
+</div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getDatabase, ref, onValue, query, orderByChild } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-    // --- CONFIG FIREBASE ---
+    // Configuración de Firebase (cliente)
     const firebaseConfig = {
         apiKey: "AIzaSyDwvA4lhR5lpc_4ucUCUJ2OyuP4x8pcTGM",
         authDomain: "control-granizados.firebaseapp.com",
@@ -470,234 +317,283 @@
     const appFB = initializeApp(firebaseConfig);
     const database = getDatabase(appFB);
 
-    // --- CONSTANTES ---
+    // Constantes
     const META = 103833;
     const CAPACIDAD = 12.0;
     const CONSUMO = 0.25;
     const COMISION_PORC = 0.10;
 
-    let grafica = null;
+    let graficaHoras = null;
+    let graficaSemanal = null;
     let unsubscribe = null;
+    let ultimoDia = new Date().toISOString().split('T')[0];
 
-    // --- Reloj ---
+    // Utilidades
+    function fmt(n) { return '$' + Math.round(n).toLocaleString('es-CO'); }
+    
+    function mostrarToast(mensaje, tipo = 'success') {
+        const toast = document.createElement('div');
+        toast.className = 'toast-notification';
+        toast.textContent = mensaje;
+        toast.style.background = tipo === 'success' ? '#10b981' : '#ef4444';
+        toast.style.color = 'white';
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+
+    // Reloj
     function actualizarReloj() {
-        const now = new Date();
-        document.getElementById('reloj').textContent =
-            now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        document.getElementById('reloj').textContent = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
     setInterval(actualizarReloj, 1000);
     actualizarReloj();
 
-    // --- Fecha inicial: hoy ---
+    // Fecha inicial
     const hoy = new Date().toISOString().split('T')[0];
     document.getElementById('fecha-filtro').value = hoy;
 
-    // --- Formatear pesos ---
-    function fmt(n) {
-        return '$' + Math.round(n).toLocaleString('es-CO');
-    }
-
-    // --- Estado de conexión ---
+    // Estado conexión
     function setEstado(estado) {
         const el = document.getElementById('estado-conexion');
         const txt = document.getElementById('estado-texto');
         el.className = 'live-dot ' + estado;
-        if (estado === 'ok') txt.textContent = 'EN VIVO';
-        else if (estado === 'error') txt.textContent = 'SIN CONEXIÓN';
-        else txt.textContent = 'CONECTANDO...';
+        txt.textContent = estado === 'ok' ? 'EN VIVO' : estado === 'error' ? 'SIN CONEXIÓN' : 'CONECTANDO...';
     }
 
-    // --- Flash en KPI cuando cambia ---
     function flashEl(id) {
         const el = document.getElementById(id);
-        el.classList.remove('flash');
-        void el.offsetWidth; // reflow
-        el.classList.add('flash');
-        setTimeout(() => el.classList.remove('flash'), 400);
+        if (el) {
+            el.classList.add('flash');
+            setTimeout(() => el.classList.remove('flash'), 400);
+        }
     }
 
-    // --- Renderizar KPIs ---
-    function renderKPIs(ventas) {
-        const total = ventas.reduce((s, v) => s + (v.valor_venta || 0), 0);
-        const count = ventas.length;
-        const comision = Math.round(total * COMISION_PORC);
-        const litrosConsumidos = count * CONSUMO;
-        const litrosRestantes = Math.max(0, CAPACIDAD - litrosConsumidos);
-        const porc = Math.min((total / META) * 100, 100);
+    // Cargar resumen semanal
+    async function cargarResumenSemanal() {
+        try {
+            const res = await fetch('/get_weekly_summary');
+            const data = await res.json();
+            if (!graficaSemanal && data.length) {
+                const ctx = document.getElementById('grafica-semanal').getContext('2d');
+                graficaSemanal = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.map(d => {
+                            const dias = { 'Monday':'Lun','Tuesday':'Mar','Wednesday':'Mié','Thursday':'Jue','Friday':'Vie','Saturday':'Sáb','Sunday':'Dom' };
+                            return dias[d.dia_semana] || d.dia_semana.substring(0,3);
+                        }),
+                        datasets: [{
+                            label: 'Ventas ($)',
+                            data: data.map(d => d.total),
+                            borderColor: '#f59e0b',
+                            backgroundColor: 'rgba(245,158,11,0.1)',
+                            tension: 0.3,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { tooltip: { callbacks: { label: ctx => ` ${fmt(ctx.parsed.y)}` } } },
+                        scales: { y: { ticks: { callback: v => fmt(v) } } }
+                    }
+                });
+            } else if (graficaSemanal && data.length) {
+                graficaSemanal.data.datasets[0].data = data.map(d => d.total);
+                graficaSemanal.update();
+            }
+        } catch(e) { console.error(e); }
+    }
 
-        document.getElementById('kpi-total').textContent = fmt(total);
-        document.getElementById('kpi-ventas').textContent = count;
-        document.getElementById('kpi-comision').textContent = fmt(comision);
-        document.getElementById('kpi-litros').textContent = litrosRestantes.toFixed(1) + ' L';
-        document.getElementById('kpi-litros-sub').textContent = litrosConsumidos.toFixed(2) + 'L consumidos';
-        document.getElementById('barra-meta').style.width = porc + '%';
-        document.getElementById('barra-tanque').style.width = (litrosRestantes / CAPACIDAD * 100) + '%';
-        document.getElementById('porc-meta').textContent = porc.toFixed(1) + '%';
+    // Renderizar KPIs
+    function renderKPIs(stats) {
+        document.getElementById('kpi-total').textContent = fmt(stats.total_hoy);
+        document.getElementById('kpi-ventas').textContent = stats.ventas_hoy;
+        document.getElementById('kpi-comision').textContent = fmt(stats.comision_total);
+        document.getElementById('kpi-ganancia').textContent = fmt(stats.ganancia_neta || 0);
+        document.getElementById('kpi-costo').textContent = `Costo: ${fmt(stats.costo_total || 0)}`;
+        document.getElementById('kpi-litros').textContent = stats.litros_restantes.toFixed(1) + ' L';
+        document.getElementById('kpi-litros-sub').textContent = stats.litros_consumidos.toFixed(2) + 'L consumidos';
+        document.getElementById('barra-meta').style.width = stats.porcentaje_meta + '%';
+        document.getElementById('barra-tanque').style.width = (stats.litros_restantes / CAPACIDAD * 100) + '%';
+        document.getElementById('porc-meta').textContent = stats.porcentaje_meta + '%';
 
-        // Alerta meta
         const alerta = document.getElementById('alerta-meta');
-        if (total >= META) {
+        if (stats.total_hoy >= META) {
             alerta.classList.remove('hidden');
-            document.getElementById('alerta-sub').textContent =
-                `¡Llevas ${fmt(total)} — ${fmt(total - META)} sobre la meta!`;
+            document.getElementById('alerta-sub').textContent = `¡Llevas ${fmt(stats.total_hoy)} — ${fmt(stats.total_hoy - META)} sobre la meta!`;
         } else {
             alerta.classList.add('hidden');
         }
-
         flashEl('kpi-ventas');
         flashEl('kpi-total');
     }
 
-    // --- Renderizar tabla ---
+    // Renderizar tabla
     function renderTabla(ventas) {
         const tbody = document.getElementById('tabla-cuerpo');
         document.getElementById('badge-count').textContent = ventas.length + ' registros';
-
         if (!ventas.length) {
-            tbody.innerHTML = `<tr><td colspan="4" class="empty"><div class="icon">🧊</div>No hay ventas registradas</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" class="empty">No hay ventas registradas</td></tr>`;
             return;
         }
-
-        // Ordenar más reciente primero
-        const sorted = [...ventas].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-
-        tbody.innerHTML = sorted.map((v, i) => {
-            const hora = new Date(v.timestamp).toLocaleTimeString('es-CO', {
-                hour: '2-digit', minute: '2-digit', second: '2-digit'
-            });
-            const esAuto = v.metodo && v.metodo.includes('GeoVision');
-            const badge = esAuto
-                ? '<span class="badge badge-cam">📹 Cámara</span>'
-                : '<span class="badge badge-manual">✋ Manual</span>';
-            const esNueva = i === 0 ? 'row-new' : '';
+        const sorted = [...ventas].sort((a,b) => b.timestamp.localeCompare(a.timestamp));
+        tbody.innerHTML = sorted.map((v, idx) => {
+            const hora = new Date(v.timestamp).toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+            const esCamara = v.metodo?.includes('GeoVision');
+            const badge = esCamara ? '<span class="badge badge-cam">📹 Cámara</span>' : '<span class="badge badge-manual">✋ Manual</span>';
+            const esNueva = idx === 0 ? 'row-new' : '';
             return `<tr class="${esNueva}">
                 <td>${hora}</td>
                 <td>${badge}</td>
-                <td>${fmt(v.valor_venta || 0)}</td>
-                <td>${fmt(v.comision_empleado || 0)}</td>
+                <td>${fmt(v.valor_venta)}</td>
+                <td>${fmt(v.comision_empleado)}</td>
+                <td>${v.observacion || '-'}</td>
             </tr>`;
         }).join('');
     }
 
-    // --- Renderizar gráfica ---
-    function renderGrafica(ventas, labelFecha) {
-        document.getElementById('chart-fecha').textContent = labelFecha;
-
+    // Renderizar gráfica de horas
+    function renderGraficaHoras(ventas, label) {
+        document.getElementById('chart-fecha').textContent = label;
         const porHora = {};
-        ventas.forEach(v => {
-            const hora = new Date(v.timestamp).getHours();
-            porHora[hora] = (porHora[hora] || 0) + 1;
-        });
-
-        const horas = Array.from({ length: 24 }, (_, i) => i);
-        const valores = horas.map(h => porHora[h] || 0);
-        const labels = horas.map(h => h + ':00');
-
-        if (grafica) {
-            grafica.data.datasets[0].data = valores;
-            grafica.update('active');
-            return;
-        }
-
-        const ctx = document.getElementById('grafica-horas').getContext('2d');
-        grafica = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels,
-                datasets: [{
-                    label: 'Granizados',
-                    data: valores,
-                    backgroundColor: 'rgba(0,229,160,0.25)',
-                    borderColor: '#00e5a0',
-                    borderWidth: 2,
-                    borderRadius: 6,
-                    hoverBackgroundColor: 'rgba(0,229,160,0.5)',
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        backgroundColor: '#1e2330',
-                        borderColor: '#2a3045',
-                        borderWidth: 1,
-                        titleColor: '#e8eaf0',
-                        bodyColor: '#00e5a0',
-                        callbacks: { label: ctx => ` ${ctx.parsed.y} granizado(s)` }
-                    }
+        ventas.forEach(v => { const h = new Date(v.timestamp).getHours(); porHora[h] = (porHora[h]||0)+1; });
+        const valores = Array.from({length:24}, (_,i)=> porHora[i]||0);
+        if (graficaHoras) {
+            graficaHoras.data.datasets[0].data = valores;
+            graficaHoras.update();
+        } else {
+            const ctx = document.getElementById('grafica-horas').getContext('2d');
+            graficaHoras = new Chart(ctx, {
+                type: 'bar',
+                data: { 
+                    labels: Array.from({length:24},(_,i)=>i+':00'), 
+                    datasets: [{ 
+                        label: 'Granizados', 
+                        data: valores, 
+                        backgroundColor: 'rgba(0,229,160,0.25)', 
+                        borderColor: '#00e5a0', 
+                        borderWidth: 2,
+                        borderRadius: 6
+                    }] 
                 },
-                scales: {
-                    x: {
-                        grid: { color: '#1e2330' },
-                        ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: 12 }
-                    },
-                    y: {
-                        grid: { color: '#1e2330' },
-                        ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, stepSize: 1 },
-                        beginAtZero: true
-                    }
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    plugins: { legend:{display:false} }, 
+                    scales: { y:{ beginAtZero:true, stepSize:1 } } 
                 }
-            }
-        });
-    }
-
-    // --- Escuchar Firebase en tiempo real ---
-    function escucharFecha(fecha) {
-        // Cancelar listener anterior si existe
-        if (unsubscribe) {
-            unsubscribe();
-            unsubscribe = null;
-        }
-
-        setEstado('conectando');
-
-        const dbRef = ref(database, 'ventas_granizados');
-        const esHoy = fecha === hoy;
-        const label = esHoy ? 'HOY' : fecha;
-
-        unsubscribe = onValue(dbRef, (snapshot) => {
-            setEstado('ok');
-
-            const datos = snapshot.val();
-            if (!datos) {
-                renderTabla([]);
-                renderKPIs([]);
-                renderGrafica([], label);
-                return;
-            }
-
-            // Filtrar por fecha seleccionada
-            const todas = Object.values(datos);
-            const filtradas = todas.filter(v => {
-                if (!v.timestamp) return false;
-                return v.timestamp.startsWith(fecha);
             });
+        }
+    }
 
-            renderKPIs(filtradas);
+    // Función principal que escucha Firebase
+    async function escucharFecha(fecha) {
+        if (unsubscribe) unsubscribe();
+        setEstado('conectando');
+        
+        const dbRef = ref(database, 'ventas_granizados');
+        unsubscribe = onValue(dbRef, async (snapshot) => {
+            setEstado('ok');
+            const datos = snapshot.val();
+            if (!datos) { 
+                renderTabla([]); 
+                renderGraficaHoras([], fecha);
+                const stats = { total_hoy:0, ventas_hoy:0, comision_total:0, litros_consumidos:0, litros_restantes:CAPACIDAD, porcentaje_meta:0, ganancia_neta:0, costo_total:0 };
+                renderKPIs(stats);
+                return; 
+            }
+            
+            const filtradas = Object.values(datos).filter(v => v.timestamp?.startsWith(fecha));
+            
+            const statsRes = await fetch(`/get_stats?fecha=${fecha}`);
+            const stats = await statsRes.json();
+            renderKPIs(stats);
             renderTabla(filtradas);
-            renderGrafica(filtradas, label);
-
-        }, (error) => {
-            console.error('Firebase error:', error);
+            renderGraficaHoras(filtradas, fecha === hoy ? 'HOY' : fecha);
+            await cargarResumenSemanal();
+            
+        }, (error) => { 
+            console.error(error); 
             setEstado('error');
+            mostrarToast('Error de conexión con Firebase', 'error');
         });
     }
 
-    // --- Aplicar filtro de fecha ---
+    // Detección automática de nuevo día
+    function verificarNuevoDia() {
+        const hoyActual = new Date().toISOString().split('T')[0];
+        if (hoyActual !== ultimoDia) {
+            ultimoDia = hoyActual;
+            document.getElementById('fecha-filtro').value = hoyActual;
+            escucharFecha(hoyActual);
+            mostrarToast('🌅 ¡Nuevo día! Dashboard actualizado automáticamente', 'success');
+        }
+    }
+
+    // Botón nuevo día manual
+    window.resetearNuevoDia = function() {
+        const hoyActual = new Date().toISOString().split('T')[0];
+        ultimoDia = hoyActual;
+        document.getElementById('fecha-filtro').value = hoyActual;
+        escucharFecha(hoyActual);
+        mostrarToast('✅ Dashboard reiniciado para el nuevo día', 'success');
+    };
+
+    // Aplicar filtro manual
     window.aplicarFiltro = function() {
         const fecha = document.getElementById('fecha-filtro').value;
         escucharFecha(fecha);
     };
 
-    // --- Exportar CSV (sigue usando el backend) ---
+    // Exportar CSV
     window.exportarCSV = function() {
         const fecha = document.getElementById('fecha-filtro').value;
-        window.location.href = `/export_csv${fecha ? '?fecha=' + fecha : ''}`;
+        window.location.href = `/export_csv?fecha=${fecha}`;
+        mostrarToast('📄 Exportando CSV...', 'success');
     };
 
-    // --- Iniciar escucha ---
+    // Modal venta manual
+    window.mostrarModalVenta = () => document.getElementById('modal-venta').style.display = 'flex';
+    window.cerrarModalVenta = () => document.getElementById('modal-venta').style.display = 'none';
+    
+    window.registrarVentaManual = async () => {
+        const precio = parseInt(document.getElementById('venta-precio').value);
+        const observacion = document.getElementById('venta-observacion').value;
+        if (!precio || precio <= 0) { 
+            mostrarToast('❌ Precio inválido', 'error');
+            return; 
+        }
+        try {
+            const res = await fetch('/update_data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ valor_venta: precio, metodo: 'Manual Web', observacion })
+            });
+            if (res.ok) {
+                cerrarModalVenta();
+                document.getElementById('venta-observacion').value = '';
+                mostrarToast('✅ Venta manual registrada', 'success');
+                // No es necesario recargar, Firebase actualiza en tiempo real
+            } else if (res.status === 401) {
+                mostrarToast('❌ Sesión expirada. Inicia sesión nuevamente', 'error');
+                window.location.href = '/login';
+            }
+        } catch(e) { 
+            mostrarToast('❌ Error al registrar', 'error');
+        }
+    };
+
+    // Cerrar sesión
+    window.cerrarSesion = async () => {
+        await fetch('/api/logout', { method: 'POST' });
+        window.location.href = '/login';
+    };
+
+    // Verificar nuevo día cada minuto
+    setInterval(verificarNuevoDia, 60000);
+    
+    // Iniciar
     escucharFecha(hoy);
 </script>
 </body>
