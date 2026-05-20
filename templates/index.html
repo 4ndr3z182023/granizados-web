@@ -126,6 +126,8 @@
         .btn-primary:hover { background: #00c988; transform: translateY(-1px); }
         .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
         .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+        .btn-danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
+        .btn-danger:hover { background: var(--danger); color: var(--text); border-color: var(--danger); }
 
         main { padding: 0 32px 40px; }
 
@@ -342,6 +344,86 @@
             100% { background: transparent; }
         }
         .row-new td { animation: rowFlash 1.5s ease forwards; }
+
+        /* Modal de confirmación */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+            animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--card-radius);
+            padding: 28px 32px;
+            max-width: 450px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .modal-content h3 {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.3rem;
+            margin-bottom: 12px;
+        }
+
+        .modal-content p {
+            color: var(--muted);
+            margin-bottom: 24px;
+            font-size: 0.9rem;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+
+        .modal-buttons button {
+            padding: 10px 24px;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            z-index: 1000;
+            animation: slideToast 0.3s ease;
+            pointer-events: none;
+        }
+
+        @keyframes slideToast {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .toast.success { border-left: 4px solid var(--accent); color: var(--accent); }
+        .toast.error { border-left: 4px solid var(--danger); color: var(--danger); }
     </style>
 </head>
 <body>
@@ -364,6 +446,7 @@
     <input type="date" id="fecha-filtro" class="date-input" title="Filtrar por fecha">
     <button class="btn btn-primary" onclick="aplicarFiltro()">⟳ Actualizar</button>
     <button class="btn btn-outline" onclick="exportarCSV()">↓ Exportar CSV</button>
+    <button class="btn btn-danger" onclick="mostrarModalReset()">🗑️ Reiniciar todo</button>
 </div>
 
 <main>
@@ -452,6 +535,18 @@
 
 </main>
 
+<!-- Modal de confirmación -->
+<div id="modalReset" class="modal">
+    <div class="modal-content">
+        <h3>⚠️ Reiniciar todos los datos</h3>
+        <p>Esta acción eliminará permanentemente <strong>TODOS</strong> los registros de ventas. No podrás recuperarlos.</p>
+        <div class="modal-buttons">
+            <button class="btn btn-outline" onclick="cerrarModal()">Cancelar</button>
+            <button class="btn btn-danger" onclick="confirmarReset()">Sí, reiniciar todo</button>
+        </div>
+    </div>
+</div>
+
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getDatabase, ref, onValue, query, orderByChild } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
@@ -507,11 +602,21 @@
         else txt.textContent = 'CONECTANDO...';
     }
 
+    // --- Mostrar notificación toast ---
+    function mostrarToast(mensaje, tipo = 'success') {
+        const toast = document.createElement('div');
+        toast.className = `toast ${tipo}`;
+        toast.textContent = mensaje;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+    }
+
     // --- Flash en KPI cuando cambia ---
     function flashEl(id) {
         const el = document.getElementById(id);
+        if (!el) return;
         el.classList.remove('flash');
-        void el.offsetWidth; // reflow
+        void el.offsetWidth;
         el.classList.add('flash');
         setTimeout(() => el.classList.remove('flash'), 400);
     }
@@ -558,7 +663,6 @@
             return;
         }
 
-        // Ordenar más reciente primero
         const sorted = [...ventas].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
         tbody.innerHTML = sorted.map((v, i) => {
@@ -645,7 +749,6 @@
 
     // --- Escuchar Firebase en tiempo real ---
     function escucharFecha(fecha) {
-        // Cancelar listener anterior si existe
         if (unsubscribe) {
             unsubscribe();
             unsubscribe = null;
@@ -668,7 +771,6 @@
                 return;
             }
 
-            // Filtrar por fecha seleccionada
             const todas = Object.values(datos);
             const filtradas = todas.filter(v => {
                 if (!v.timestamp) return false;
@@ -689,13 +791,62 @@
     window.aplicarFiltro = function() {
         const fecha = document.getElementById('fecha-filtro').value;
         escucharFecha(fecha);
+        mostrarToast(`Filtrado por: ${fecha}`, 'success');
     };
 
-    // --- Exportar CSV (sigue usando el backend) ---
+    // --- Exportar CSV ---
     window.exportarCSV = function() {
         const fecha = document.getElementById('fecha-filtro').value;
         window.location.href = `/export_csv${fecha ? '?fecha=' + fecha : ''}`;
     };
+
+    // --- Mostrar modal de confirmación para reset ---
+    window.mostrarModalReset = function() {
+        const modal = document.getElementById('modalReset');
+        modal.classList.add('active');
+    };
+
+    window.cerrarModal = function() {
+        const modal = document.getElementById('modalReset');
+        modal.classList.remove('active');
+    };
+
+    // --- Confirmar y ejecutar reset completo ---
+    window.confirmarReset = async function() {
+        cerrarModal();
+        mostrarToast('🔄 Reiniciando base de datos...', 'success');
+        
+        try {
+            const response = await fetch('/reset_all', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ confirm: true })
+            });
+            
+            const resultado = await response.json();
+            
+            if (response.ok && resultado.status === 'ok') {
+                mostrarToast(`✅ ${resultado.message}`, 'success');
+                // Recargar los datos automáticamente
+                const fecha = document.getElementById('fecha-filtro').value;
+                escucharFecha(fecha);
+            } else {
+                mostrarToast(`❌ Error: ${resultado.error || 'No se pudo reiniciar'}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error en reset:', error);
+            mostrarToast('❌ Error de conexión al servidor', 'error');
+        }
+    };
+
+    // Cerrar modal al hacer clic fuera
+    document.getElementById('modalReset').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('modalReset')) {
+            cerrarModal();
+        }
+    });
 
     // --- Iniciar escucha ---
     escucharFecha(hoy);
