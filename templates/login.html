@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Control Granizados</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: linear-gradient(135deg, #0d0f14 0%, #161921 100%);
+            font-family: 'DM Sans', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .login-container {
+            background: #1e2330;
+            border-radius: 24px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+            border: 1px solid #2a3045;
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo-icon {
+            width: 60px;
+            height: 60px;
+            background: #00e5a0;
+            border-radius: 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            margin-bottom: 16px;
+        }
+        h1 {
+            color: #e8eaf0;
+            font-family: 'Syne', sans-serif;
+            font-size: 24px;
+        }
+        h1 span { color: #00e5a0; }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            color: #6b7280;
+            font-size: 0.85rem;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        input {
+            width: 100%;
+            padding: 12px 16px;
+            background: #0d0f14;
+            border: 1px solid #2a3045;
+            border-radius: 12px;
+            color: #e8eaf0;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus {
+            border-color: #00e5a0;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #00e5a0;
+            color: #0d0f14;
+            border: none;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        button:hover {
+            background: #00c988;
+            transform: translateY(-1px);
+        }
+        .error {
+            color: #ef4444;
+            font-size: 0.85rem;
+            margin-top: 12px;
+            text-align: center;
+        }
+        .info {
+            text-align: center;
+            margin-top: 20px;
+            color: #6b7280;
+            font-size: 0.75rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">
+            <div class="logo-icon">🧊</div>
+            <h1>Bar <span>Granizados</span></h1>
+        </div>
+        <div class="input-group">
+            <label>🔐 Contraseña de administrador</label>
+            <input type="password" id="password" placeholder="Ingresa la contraseña" onkeypress="if(event.key==='Enter') login()">
+        </div>
+        <button onclick="login()">Acceder al Dashboard</button>
+        <div id="error" class="error"></div>
+        <div class="info">
+            Sistema integrado con cámara GeoVision
+        </div>
+    </div>
+
+    <script>
+        async function login() {
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('error');
+            
+            if (!password) {
+                errorDiv.textContent = 'Ingresa la contraseña';
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: password })
+                });
+                
+                if (response.ok) {
+                    window.location.href = '/';
+                } else {
+                    errorDiv.textContent = 'Contraseña incorrecta';
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Error de conexión';
+            }
+        }
+    </script>
+</body>
+</html>
