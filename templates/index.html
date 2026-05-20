@@ -507,13 +507,13 @@
     // --- Cargar datos + estadísticas ---
     async function cargarDatos() {
         const fecha = document.getElementById('fecha-filtro').value;
-        document.getElementById('loading').style.display = 'inline-block';
+        // Cache-buster: evita que el navegador devuelva respuesta guardada
+        const ts = Date.now();
 
         try {
-            // CORRECCIÓN: se pasa la fecha también a /get_stats
             const [resData, resStats] = await Promise.all([
-                fetch(`/get_data${fecha ? '?fecha=' + fecha : ''}`),
-                fetch(`/get_stats${fecha ? '?fecha=' + fecha : ''}`)
+                fetch(`/get_data${fecha ? '?fecha=' + fecha : '?'}&_=${ts}`, { cache: 'no-store' }),
+                fetch(`/get_stats${fecha ? '?fecha=' + fecha : '?'}&_=${ts}`, { cache: 'no-store' })
             ]);
             const data = await resData.json();
             const stats = await resStats.json();
@@ -521,11 +521,24 @@
             renderKPIs(stats);
             renderTabla(data);
             renderGrafica(stats.por_hora || {}, fecha === hoy ? 'HOY' : fecha);
+            setEstado('ok');
 
         } catch (e) {
             console.error('Error cargando datos:', e);
-        } finally {
-            document.getElementById('loading').style.display = 'none';
+            setEstado('error');
+        }
+    }
+
+    // --- Indicador de estado de conexión ---
+    function setEstado(estado) {
+        const dot = document.querySelector('.live-dot');
+        if (estado === 'ok') {
+            dot.style.color = '';
+            dot.textContent = 'EN VIVO';
+            dot.style.setProperty('--dot-color', 'var(--accent)');
+        } else {
+            dot.style.color = 'var(--danger)';
+            dot.textContent = 'RECONECTANDO...';
         }
     }
 
@@ -655,12 +668,18 @@
         window.location.href = `/export_csv${fecha ? '?fecha=' + fecha : ''}`;
     }
 
-    // Actualizar automáticamente cada 5 segundos
-    setInterval(cargarDatos, 5000);
+    // Actualizar cada 3 segundos
+    setInterval(cargarDatos, 3000);
     cargarDatos();
+
+    // Keep-alive: evita que Render duerma el servidor (ping cada 10 min)
+    setInterval(() => {
+        fetch("/get_stats?_keepalive=1", { cache: "no-store" }).catch(() => {});
+    }, 10 * 60 * 1000);
 </script>
 </body>
 </html>
+
 
 </body>
 </html>
