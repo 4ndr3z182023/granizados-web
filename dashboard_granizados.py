@@ -6,30 +6,29 @@ from time import time
 from flask import Flask, render_template, jsonify, request, abort
 import firebase_admin
 from firebase_admin import credentials, db
+import pytz
 
 app = Flask(__name__)
 
-# --- CONFIGURACIÓN DE FIREBASE ---
+# --- ZONA HORARIA COLOMBIA ---
+COLOMBIA_TZ = pytz.timezone('America/Bogota')
+
+def ahora_colombia():
+    return datetime.now(COLOMBIA_TZ)
+
+# --- FIREBASE ---
 firebase_json = os.environ.get('FIREBASE_JSON_DATA')
 
 if firebase_json:
-    key_dict = json.loads(firebase_json)
-    cred = credentials.Certificate(key_dict)
+    cred = credentials.Certificate(json.loads(firebase_json))
 else:
-    try:
-        cred = credentials.Certificate("llave.json")
-    except Exception as e:
-        print("Error: No se encontró llave.json")
-        cred = None
+    cred = credentials.Certificate("llave.json")
 
-if cred:
-    if not firebase_admin._apps:
-        firebase_admin.initialize_app(cred, {
-            'databaseURL': 'https://control-granizados-default-rtdb.firebaseio.com/'
-        })
-        print("✅ Firebase inicializado")
-else:
-    print("❌ Firebase no inicializado")
+if not firebase_admin._apps:
+    firebase_admin.initialize_app(cred, {
+        'databaseURL': 'https://control-granizados-default-rtdb.firebaseio.com/'
+    })
+    print("✅ Firebase inicializado - Zona horaria Colombia")
 
 # --- CONSTANTES ---
 PRECIO_GRANIZADO = 5000
@@ -116,7 +115,7 @@ def get_stats():
             except ValueError:
                 return jsonify({"error": "Formato inválido"}), 400
         else:
-            dia = date.today()
+            dia = ahora_colombia().date()
 
         ventas_dia = [
             val for val in datos.values()
@@ -127,7 +126,14 @@ def get_stats():
         litros_consumidos = len(ventas_dia) * CONSUMO_POR_GRANIZADO
         ganancia_neta = total_dia - (len(ventas_dia) * COSTO_POR_GRANIZADO)
 
+        # Calcular ventas por hora
+        por_hora = {}
+        for v in ventas_dia:
+            hora = datetime.fromisoformat(v['timestamp']).hour
+            por_hora[str(hora)] = por_hora.get(str(hora), 0) + 1
+
         return no_cache(jsonify({
+            "por_hora": por_hora,
             "total_hoy": total_dia,
             "ventas_hoy": len(ventas_dia),
             "comision_total": round(total_dia * COMISION_PORCENTAJE),
@@ -152,7 +158,7 @@ def get_weekly_summary():
 
         resumen_semanal = []
         for i in range(7):
-            fecha = date.today() - timedelta(days=i)
+            fecha = ahora_colombia().date() - timedelta(days=i)
             ventas_dia = [
                 v for v in datos.values()
                 if datetime.fromisoformat(v.get('timestamp', '')).date() == fecha
@@ -173,54 +179,78 @@ def get_weekly_summary():
 @app.route('/update_data', methods=['GET', 'POST', 'PUT'])
 @rate_limit(max_requests=120, window=60)
 def update_data():
-    """Recibe ventas desde la cámara GeoVision - SIN CONTRASEÑA"""
+    """Recibe ventas desde la cámara GeoVision - USANDO HORA DE COLOMBIA"""
     try:
         precio = PRECIO_GRANIZADO
         metodo = "GeoVision Automático"
         observacion = ""
         
-        # GET parameters (cámara GeoVision)
+        # --- OBTENER PRECIO ---
         if request.method == 'GET':
             precio = int(request.args.get('valor_venta', 
                        request.args.get('precio', 
                        request.args.get('venta', PRECIO_GRANIZADO))))
             metodo = request.args.get('metodo', 'GeoVision GET')
-        
-        # POST JSON
+            
         elif request.method == 'POST' and request.is_json:
             data = request.get_json(silent=True) or {}
             precio = int(data.get('valor_venta', data.get('precio', PRECIO_GRANIZADO)))
             metodo = data.get('metodo', 'GeoVision JSON')
             observacion = data.get('observacion', '')
-        
-        # POST Form
+            
         elif request.method == 'POST' and request.form:
             precio = int(request.form.get('valor_venta', 
                        request.form.get('precio', PRECIO_GRANIZADO)))
             metodo = request.form.get('metodo', 'GeoVision Form')
-        
-        # POST Raw
+            
         elif request.method == 'POST':
             raw_data = request.get_data(as_text=True)
             if raw_data and raw_data.strip().isdigit():
                 precio = int(raw_data.strip())
                 metodo = "GeoVision Raw"
 
+        # --- USAR FECHA Y HORA DE COLOMBIA (NO LA DE LA CÁMARA) ---
+        ahora_local = ahora_colombia()
+        
+        # Intentar usar fecha de la cámara solo si es válida
+        fecha_camara = None
+        if request.method == 'GET':
+            fecha_camara = request.args.get('timestamp') or request.args.get('fecha') or request.args.get('hora')
+        elif request.is_json:
+            data = request.get_json(silent=True) or {}
+            fecha_camara = data.get('timestamp') or data.get('fecha') or data.get('hora')
+        
+        if fecha_camara:
+            try:
+                fecha_parseada = datetime.fromisoformat(fecha_camara.replace(' ', 'T'))
+                # Validar que la fecha sea razonable
+                if fecha_parseada.year >= 2024 and fecha_parseada <= ahora_local.year + 1:
+                    ahora_local = fecha_parseada.astimezone(COLOMBIA_TZ)
+                    observacion += f" (fecha cámara: {fecha_camara})"
+                else:
+                    observacion += f" (fecha cámara inválida: {fecha_camara}, usando servidor)"
+            except:
+                observacion += f" (error parsing fecha cámara: {fecha_camara})"
+
         comision = round(precio * COMISION_PORCENTAJE)
 
         ref = db.reference('ventas_granizados')
         nueva_venta = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": ahora_local.isoformat(),
             "valor_venta": precio,
             "comision_empleado": comision,
             "metodo": metodo,
-            "observacion": observacion
+            "observacion": observacion or f"Recibido vía {request.method}"
         }
         ref.push(nueva_venta)
         
-        print(f"✅ Venta registrada: ${precio} - {datetime.now().strftime('%H:%M:%S')}")
+        print(f"✅ Venta: ${precio} - {ahora_local.strftime('%Y-%m-%d %H:%M:%S')} Colombia")
         
-        return jsonify({"status": "ok", "precio": precio}), 200
+        return jsonify({
+            "status": "ok", 
+            "precio": precio,
+            "timestamp": ahora_local.isoformat()
+        }), 200
 
     except Exception as e:
         print(f"❌ Error: {e}")
@@ -258,7 +288,7 @@ def export_csv():
             )
 
         csv_content = "\n".join(lines)
-        filename = f"granizados_{fecha_filtro or date.today().isoformat()}.csv"
+        filename = f"granizados_{fecha_filtro or ahora_colombia().date().isoformat()}.csv"
         return Response(
             csv_content,
             mimetype='text/csv',
@@ -268,13 +298,22 @@ def export_csv():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/test_camera', methods=['GET'])
-def test_camera():
-    return jsonify({
-        "status": "ok",
-        "message": "Servidor funcionando correctamente",
-        "time": datetime.now().isoformat()
-    }), 200
+@app.route('/debug_camera', methods=['GET', 'POST'])
+def debug_camera():
+    """Endpoint de depuración para ver qué envía la cámara"""
+    info = {
+        "method": request.method,
+        "headers": dict(request.headers),
+        "args": dict(request.args),
+        "form": dict(request.form),
+        "json": request.get_json(silent=True),
+        "raw_data": request.get_data(as_text=True),
+        "timestamp_servidor": ahora_colombia().isoformat()
+    }
+    
+    print(f"🔍 DEBUG - Cámara envió: {info}")
+    
+    return jsonify(info), 200
 
 @app.errorhandler(429)
 def too_many_requests(e):
