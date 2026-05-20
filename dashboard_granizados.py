@@ -3,15 +3,11 @@ import json
 from datetime import datetime, date, timedelta
 from functools import wraps
 from time import time
-from flask import Flask, render_template, jsonify, request, abort, session
+from flask import Flask, render_template, jsonify, request, abort
 import firebase_admin
 from firebase_admin import credentials, db
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'tu-clave-secreta-cambiala-en-produccion')
-
-# --- CONFIGURACIÓN DE SEGURIDAD ---
-PASSWORD_ADMIN = os.environ.get('ADMIN_PASSWORD', 'admin123')
 
 # --- CONFIGURACIÓN DE FIREBASE ---
 firebase_json = os.environ.get('FIREBASE_JSON_DATA')
@@ -23,7 +19,7 @@ else:
     try:
         cred = credentials.Certificate("llave.json")
     except Exception as e:
-        print("Error: No se encontró llave.json ni variable de entorno.")
+        print("Error: No se encontró llave.json")
         cred = None
 
 if cred:
@@ -31,11 +27,11 @@ if cred:
         firebase_admin.initialize_app(cred, {
             'databaseURL': 'https://control-granizados-default-rtdb.firebaseio.com/'
         })
-        print("✅ Firebase inicializado correctamente")
+        print("✅ Firebase inicializado")
 else:
-    print("❌ ALERTA: Firebase no se pudo inicializar.")
+    print("❌ Firebase no inicializado")
 
-# --- CONSTANTES DE NEGOCIO ---
+# --- CONSTANTES ---
 PRECIO_GRANIZADO = 5000
 COMISION_PORCENTAJE = 0.10
 META_DIARIA = 103833
@@ -62,32 +58,15 @@ def rate_limit(max_requests=60, window=60):
         return wrapper
     return decorator
 
-# --- DECORADOR PARA REQUERIR AUTENTICACIÓN ---
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not session.get('logged_in'):
-            return jsonify({"error": "No autorizado"}), 401
-        return f(*args, **kwargs)
-    return decorated_function
+def no_cache(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return response
 
 # --- RUTAS ---
 
 @app.route('/')
 def index():
     return render_template('index.html')
-
-
-
-@app.route('/api/logout', methods=['POST'])
-def logout():
-    session.pop('logged_in', None)
-    return jsonify({"success": True})
-
-def no_cache(response):
-    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-    response.headers['Pragma'] = 'no-cache'
-    return response
 
 @app.route('/get_data')
 @rate_limit(max_requests=60, window=60)
@@ -109,7 +88,7 @@ def get_data():
                     if datetime.fromisoformat(v.get('timestamp', '')).date() == fecha_obj
                 ]
             except ValueError:
-                return jsonify({"error": "Formato de fecha inválido"}), 400
+                return jsonify({"error": "Formato inválido"}), 400
 
         lista_ventas.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
         return no_cache(jsonify(lista_ventas))
@@ -125,8 +104,8 @@ def get_stats():
         datos = ref.get()
         if not datos:
             return no_cache(jsonify({
-                "por_hora": {}, "total_hoy": 0, "ventas_hoy": 0,
-                "comision_total": 0, "litros_consumidos": 0, "litros_restantes": CAPACIDAD_TANQUE,
+                "total_hoy": 0, "ventas_hoy": 0, "comision_total": 0,
+                "litros_consumidos": 0, "litros_restantes": CAPACIDAD_TANQUE,
                 "porcentaje_meta": 0, "ganancia_neta": 0, "costo_total": 0
             }))
 
@@ -144,17 +123,11 @@ def get_stats():
             if datetime.fromisoformat(val.get('timestamp', '')).date() == dia
         ]
 
-        por_hora = {}
-        for v in ventas_dia:
-            hora = datetime.fromisoformat(v['timestamp']).hour
-            por_hora[str(hora)] = por_hora.get(str(hora), 0) + 1
-
         total_dia = sum(v.get('valor_venta', 0) for v in ventas_dia)
         litros_consumidos = len(ventas_dia) * CONSUMO_POR_GRANIZADO
         ganancia_neta = total_dia - (len(ventas_dia) * COSTO_POR_GRANIZADO)
 
         return no_cache(jsonify({
-            "por_hora": por_hora,
             "total_hoy": total_dia,
             "ventas_hoy": len(ventas_dia),
             "comision_total": round(total_dia * COMISION_PORCENTAJE),
@@ -197,69 +170,41 @@ def get_weekly_summary():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ============================================================
-# ENDPOINT PRINCIPAL PARA LA CÁMARA - ACEPTA MÚLTIPLES FORMATOS
-# ============================================================
 @app.route('/update_data', methods=['GET', 'POST', 'PUT'])
 @rate_limit(max_requests=120, window=60)
 def update_data():
-    """Recibe ventas desde la cámara GeoVision o botón manual"""
+    """Recibe ventas - SIN AUTENTICACIÓN"""
     try:
         precio = PRECIO_GRANIZADO
         metodo = "GeoVision Automático"
         observacion = ""
         
-        print(f"📥 Solicitud recibida - Método: {request.method}")
-        
-        # --- CASO 1: GET parameters (cámara GeoVision típica) ---
+        # GET parameters
         if request.method == 'GET':
             precio = int(request.args.get('valor_venta', 
                        request.args.get('precio', 
-                       request.args.get('venta', 
-                       request.args.get('monto', PRECIO_GRANIZADO)))))
+                       request.args.get('venta', PRECIO_GRANIZADO))))
             metodo = request.args.get('metodo', 'GeoVision GET')
-            observacion = request.args.get('observacion', '')
-            print(f"📸 GET recibido - precio: ${precio}")
         
-        # --- CASO 2: POST JSON ---
+        # POST JSON
         elif request.method == 'POST' and request.is_json:
             data = request.get_json(silent=True) or {}
             precio = int(data.get('valor_venta', data.get('precio', PRECIO_GRANIZADO)))
             metodo = data.get('metodo', 'GeoVision JSON')
             observacion = data.get('observacion', '')
-            print(f"📸 POST JSON - precio: ${precio}")
         
-        # --- CASO 3: POST Form (formulario tradicional) ---
+        # POST Form
         elif request.method == 'POST' and request.form:
             precio = int(request.form.get('valor_venta', 
-                       request.form.get('precio', 
-                       request.form.get('venta', PRECIO_GRANIZADO))))
+                       request.form.get('precio', PRECIO_GRANIZADO)))
             metodo = request.form.get('metodo', 'GeoVision Form')
-            observacion = request.form.get('observacion', '')
-            print(f"📸 POST Form - precio: ${precio}")
         
-        # --- CASO 4: POST Raw text (texto plano) ---
+        # POST Raw
         elif request.method == 'POST':
             raw_data = request.get_data(as_text=True)
-            if raw_data and raw_data.strip():
-                # Intentar parsear como número
-                try:
-                    if raw_data.strip().isdigit():
-                        precio = int(raw_data.strip())
-                        metodo = "GeoVision Raw Number"
-                        observacion = f"Dato crudo: {raw_data}"
-                    else:
-                        # Intentar parsear como JSON
-                        try:
-                            data = json.loads(raw_data)
-                            precio = int(data.get('valor_venta', data.get('precio', PRECIO_GRANIZADO)))
-                            metodo = data.get('metodo', 'GeoVision Raw JSON')
-                            observacion = data.get('observacion', '')
-                        except:
-                            observacion = f"Dato no reconocido: {raw_data[:100]}"
-                except:
-                    observacion = f"Error parsing: {raw_data[:100]}"
-            print(f"📸 POST Raw - precio: ${precio}")
+            if raw_data and raw_data.strip().isdigit():
+                precio = int(raw_data.strip())
+                metodo = "GeoVision Raw"
 
         comision = round(precio * COMISION_PORCENTAJE)
 
@@ -269,43 +214,17 @@ def update_data():
             "valor_venta": precio,
             "comision_empleado": comision,
             "metodo": metodo,
-            "observacion": observacion or f"Recibido vía {request.method}"
+            "observacion": observacion
         }
         ref.push(nueva_venta)
         
-        print(f"✅ Venta registrada: {metodo} - ${precio} - {datetime.now().strftime('%H:%M:%S')}")
+        print(f"✅ Venta: ${precio} - {datetime.now().strftime('%H:%M:%S')}")
         
-        # Respuesta simple que cualquier cámara pueda entender
-        return jsonify({
-            "status": "ok",
-            "message": "Venta registrada exitosamente",
-            "precio": precio,
-            "timestamp": nueva_venta["timestamp"]
-        }), 200
+        return jsonify({"status": "ok", "precio": precio}), 200
 
     except Exception as e:
-        print(f"❌ Error en update_data: {e}")
+        print(f"❌ Error: {e}")
         return jsonify({"error": str(e)}), 500
-
-
-# ============================================================
-# ENDPOINT DE PRUEBA PARA VERIFICAR CONEXIÓN
-# ============================================================
-@app.route('/test_camera', methods=['GET'])
-def test_camera():
-    """Endpoint de prueba para verificar que la cámara puede comunicarse"""
-    return jsonify({
-        "status": "ok",
-        "message": "Servidor funcionando correctamente",
-        "time": datetime.now().isoformat(),
-        "endpoints_disponibles": {
-            "ventas_por_get": "/update_data?valor_venta=5000",
-            "ventas_por_post": "/update_data (POST JSON)",
-            "estadisticas": "/get_stats",
-            "dashboard": "/"
-        }
-    }), 200
-
 
 @app.route('/export_csv')
 @rate_limit(max_requests=10, window=60)
@@ -349,58 +268,17 @@ def export_csv():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ============================================================
-# ENDPOINT COMPATIBLE CON GEOVISION (formato específico)
-# ============================================================
-@app.route('/geovision', methods=['GET', 'POST'])
-def geovision_webhook():
-    """Endpoint específico para GeoVision con formato simplificado"""
-    try:
-        # Extraer valor de diferentes formas
-        valor = PRECIO_GRANIZADO
-        
-        if request.method == 'GET':
-            valor = int(request.args.get('valor', request.args.get('v', request.args.get('precio', PRECIO_GRANIZADO))))
-        else:
-            if request.is_json:
-                data = request.get_json()
-                valor = int(data.get('valor', data.get('v', data.get('precio', PRECIO_GRANIZADO))))
-            elif request.form:
-                valor = int(request.form.get('valor', request.form.get('v', PRECIO_GRANIZADO)))
-            else:
-                raw = request.get_data(as_text=True)
-                if raw and raw.strip().isdigit():
-                    valor = int(raw.strip())
-        
-        comision = round(valor * COMISION_PORCENTAJE)
-        
-        ref = db.reference('ventas_granizados')
-        nueva_venta = {
-            "timestamp": datetime.now().isoformat(),
-            "valor_venta": valor,
-            "comision_empleado": comision,
-            "metodo": "GeoVision Cámara",
-            "observacion": f"Recibido en endpoint /geovision"
-        }
-        ref.push(nueva_venta)
-        
-        print(f"📷 GeoVision: Venta de ${valor} registrada")
-        
-        # Respuesta en texto plano (lo que esperan algunas cámaras)
-        return "OK", 200
-        
-    except Exception as e:
-        print(f"❌ Error GeoVision: {e}")
-        return "ERROR", 500
-
+@app.route('/test_camera', methods=['GET'])
+def test_camera():
+    return jsonify({
+        "status": "ok",
+        "message": "Servidor funcionando correctamente",
+        "time": datetime.now().isoformat()
+    }), 200
 
 @app.errorhandler(429)
 def too_many_requests(e):
-    return jsonify({"error": "Demasiadas solicitudes. Espera un momento."}), 429
-
-@app.errorhandler(500)
-def server_error(e):
-    return jsonify({"error": "Error interno del servidor."}), 500
+    return jsonify({"error": "Demasiadas solicitudes"}), 429
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
