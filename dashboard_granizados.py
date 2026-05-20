@@ -65,6 +65,13 @@ def index():
     return render_template('index.html')
 
 
+def no_cache(response):
+    """Agrega headers para evitar caché en el navegador."""
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    return response
+
+
 @app.route('/get_data')
 @rate_limit(max_requests=60, window=60)
 def get_data():
@@ -73,7 +80,7 @@ def get_data():
         ref = db.reference('ventas_granizados')
         datos = ref.get()
         if not datos:
-            return jsonify([])
+            return no_cache(jsonify([]))
 
         lista_ventas = [val for key, val in datos.items()]
 
@@ -90,7 +97,7 @@ def get_data():
                 return jsonify({"error": "Formato de fecha inválido. Use YYYY-MM-DD"}), 400
 
         lista_ventas.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
-        return jsonify(lista_ventas)
+        return no_cache(jsonify(lista_ventas))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -104,7 +111,7 @@ def get_stats():
         ref = db.reference('ventas_granizados')
         datos = ref.get()
         if not datos:
-            return jsonify({"por_hora": {}, "total_hoy": 0, "ventas_hoy": 0})
+            return no_cache(jsonify({"por_hora": {}, "total_hoy": 0, "ventas_hoy": 0}))
 
         # --- CORRECCIÓN: respetar el filtro de fecha enviado desde el frontend ---
         fecha_filtro = request.args.get('fecha')
@@ -129,7 +136,7 @@ def get_stats():
         total_dia = sum(v.get('valor_venta', 0) for v in ventas_dia)
         litros_consumidos = len(ventas_dia) * CONSUMO_POR_GRANIZADO
 
-        return jsonify({
+        return no_cache(jsonify({
             "por_hora": por_hora,
             "total_hoy": total_dia,
             "ventas_hoy": len(ventas_dia),
@@ -137,7 +144,7 @@ def get_stats():
             "litros_consumidos": litros_consumidos,
             "litros_restantes": max(0, CAPACIDAD_TANQUE - litros_consumidos),
             "porcentaje_meta": round((total_dia / META_DIARIA) * 100, 1)
-        })
+        }))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -231,5 +238,6 @@ def server_error(e):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(debug=True, host='0.0.0.0', port=port)
+
 
 
