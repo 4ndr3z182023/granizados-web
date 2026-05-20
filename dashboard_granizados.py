@@ -3,7 +3,7 @@ import json
 from datetime import datetime, date
 from functools import wraps
 from time import time
-from flask import Flask, render_template, jsonify, request, abort
+from flask import Flask, render_template, jsonify, request, abort, Response
 import firebase_admin
 from firebase_admin import credentials, db
 
@@ -49,7 +49,6 @@ def rate_limit(max_requests=30, window=60):
             now = time()
             if ip not in request_counts:
                 request_counts[ip] = []
-            # Limpiar solicitudes viejas
             request_counts[ip] = [t for t in request_counts[ip] if now - t < window]
             if len(request_counts[ip]) >= max_requests:
                 abort(429)
@@ -84,7 +83,6 @@ def get_data():
 
         lista_ventas = [val for key, val in datos.items()]
 
-        # Filtro por fecha (parámetro opcional ?fecha=YYYY-MM-DD)
         fecha_filtro = request.args.get('fecha')
         if fecha_filtro:
             try:
@@ -113,7 +111,6 @@ def get_stats():
         if not datos:
             return no_cache(jsonify({"por_hora": {}, "total_hoy": 0, "ventas_hoy": 0}))
 
-        # --- CORRECCIÓN: respetar el filtro de fecha enviado desde el frontend ---
         fecha_filtro = request.args.get('fecha')
         if fecha_filtro:
             try:
@@ -155,7 +152,6 @@ def get_stats():
 def update_data():
     """Registra una nueva venta (desde cámara GeoVision u otro origen)."""
     try:
-        # Permitir precio personalizado si viene en el body
         precio = PRECIO_GRANIZADO
         metodo = "GeoVision Automático"
 
@@ -186,7 +182,6 @@ def update_data():
 def export_csv():
     """Exporta ventas a CSV descargable."""
     try:
-        from flask import Response
         ref = db.reference('ventas_granizados')
         datos = ref.get()
 
@@ -221,6 +216,61 @@ def export_csv():
         )
 
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# --- NUEVO ENDPOINT: REINICIO COMPLETO ---
+@app.route('/reset_all', methods=['POST'])
+@rate_limit(max_requests=5, window=300)  # Máximo 5 reinicios cada 5 minutos
+def reset_all():
+    """
+    Reinicia completamente la base de datos:
+    - Elimina todas las ventas registradas
+    - Opcionalmente puede reiniciar otros contadores
+    """
+    try:
+        # Verificar token de confirmación (opcional pero recomendado)
+        body = request.get_json(silent=True) or {}
+        confirm = body.get('confirm', False)
+        
+        if not confirm:
+            return jsonify({
+                "error": "Se requiere confirmación explícita. Envía confirm: true"
+            }), 400
+        
+        # Obtener referencia a la raíz de ventas
+        ref = db.reference('ventas_granizados')
+        
+        # Obtener todas las claves actuales
+        datos = ref.get()
+        
+        if not datos:
+            return jsonify({
+                "status": "ok",
+                "message": "La base de datos ya estaba vacía",
+                "registros_eliminados": 0
+            }), 200
+        
+        # Contar registros antes de eliminar
+        cantidad = len(datos)
+        
+        # Eliminar cada registro individualmente
+        for key in datos.keys():
+            ref.child(key).delete()
+        
+        # También se puede reiniciar un contador general si existe
+        # ref_contador = db.reference('contadores')
+        # ref_contador.set({'ultimo_reset': datetime.now().isoformat()})
+        
+        return jsonify({
+            "status": "ok",
+            "message": f"Se eliminaron {cantidad} registros exitosamente",
+            "registros_eliminados": cantidad,
+            "timestamp": datetime.now().isoformat()
+        }), 200
+        
+    except Exception as e:
+        print(f"Error en reset_all: {e}")
         return jsonify({"error": str(e)}), 500
 
 
