@@ -173,13 +173,13 @@ def get_weekly_summary():
 @app.route('/update_data', methods=['GET', 'POST', 'PUT'])
 @rate_limit(max_requests=120, window=60)
 def update_data():
-    """Recibe ventas - SIN AUTENTICACIÓN"""
+    """Recibe ventas desde la cámara GeoVision - SIN CONTRASEÑA"""
     try:
         precio = PRECIO_GRANIZADO
         metodo = "GeoVision Automático"
         observacion = ""
         
-        # GET parameters
+        # GET parameters (cámara GeoVision)
         if request.method == 'GET':
             precio = int(request.args.get('valor_venta', 
                        request.args.get('precio', 
@@ -218,7 +218,7 @@ def update_data():
         }
         ref.push(nueva_venta)
         
-        print(f"✅ Venta: ${precio} - {datetime.now().strftime('%H:%M:%S')}")
+        print(f"✅ Venta registrada: ${precio} - {datetime.now().strftime('%H:%M:%S')}")
         
         return jsonify({"status": "ok", "precio": precio}), 200
 
