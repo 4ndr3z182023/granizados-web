@@ -97,37 +97,46 @@ def get_data():
 
 
 @app.route('/get_stats')
-@rate_limit(max_requests=30, window=60)
+@rate_limit(max_requests=60, window=60)
 def get_stats():
-    """Retorna estadísticas agregadas: ventas por hora del día actual."""
+    """Retorna estadísticas agregadas. Acepta ?fecha=YYYY-MM-DD opcional."""
     try:
         ref = db.reference('ventas_granizados')
         datos = ref.get()
         if not datos:
             return jsonify({"por_hora": {}, "total_hoy": 0, "ventas_hoy": 0})
 
-        hoy = date.today()
-        ventas_hoy = [
+        # --- CORRECCIÓN: respetar el filtro de fecha enviado desde el frontend ---
+        fecha_filtro = request.args.get('fecha')
+        if fecha_filtro:
+            try:
+                dia = datetime.strptime(fecha_filtro, '%Y-%m-%d').date()
+            except ValueError:
+                return jsonify({"error": "Formato de fecha inválido. Use YYYY-MM-DD"}), 400
+        else:
+            dia = date.today()
+
+        ventas_dia = [
             val for val in datos.values()
-            if datetime.fromisoformat(val.get('timestamp', '')).date() == hoy
+            if datetime.fromisoformat(val.get('timestamp', '')).date() == dia
         ]
 
         por_hora = {}
-        for v in ventas_hoy:
+        for v in ventas_dia:
             hora = datetime.fromisoformat(v['timestamp']).hour
             por_hora[str(hora)] = por_hora.get(str(hora), 0) + 1
 
-        total_hoy = sum(v.get('valor_venta', 0) for v in ventas_hoy)
-        litros_consumidos = len(ventas_hoy) * CONSUMO_POR_GRANIZADO
+        total_dia = sum(v.get('valor_venta', 0) for v in ventas_dia)
+        litros_consumidos = len(ventas_dia) * CONSUMO_POR_GRANIZADO
 
         return jsonify({
             "por_hora": por_hora,
-            "total_hoy": total_hoy,
-            "ventas_hoy": len(ventas_hoy),
-            "comision_total": round(total_hoy * COMISION_PORCENTAJE),
+            "total_hoy": total_dia,
+            "ventas_hoy": len(ventas_dia),
+            "comision_total": round(total_dia * COMISION_PORCENTAJE),
             "litros_consumidos": litros_consumidos,
             "litros_restantes": max(0, CAPACIDAD_TANQUE - litros_consumidos),
-            "porcentaje_meta": round((total_hoy / META_DIARIA) * 100, 1)
+            "porcentaje_meta": round((total_dia / META_DIARIA) * 100, 1)
         })
 
     except Exception as e:
@@ -222,4 +231,5 @@ def server_error(e):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(debug=True, host='0.0.0.0', port=port)
+
 
