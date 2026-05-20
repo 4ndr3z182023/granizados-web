@@ -6,8 +6,6 @@ from time import time
 from flask import Flask, render_template, jsonify, request, abort, session
 import firebase_admin
 from firebase_admin import credentials, db
-import hashlib
-import hmac
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'tu-clave-secreta-cambiala-en-produccion')
@@ -39,11 +37,11 @@ else:
 
 # --- CONSTANTES DE NEGOCIO ---
 PRECIO_GRANIZADO = 5000
-COMISION_PORCENTAJE = 0.10  # 10%
+COMISION_PORCENTAJE = 0.10
 META_DIARIA = 103833
-CAPACIDAD_TANQUE = 12.0  # litros
-CONSUMO_POR_GRANIZADO = 0.25  # litros por granizado
-COSTO_POR_GRANIZADO = 1800  # costo de insumos
+CAPACIDAD_TANQUE = 12.0
+CONSUMO_POR_GRANIZADO = 0.25
+COSTO_POR_GRANIZADO = 1800
 
 # --- RATE LIMITING ---
 request_counts = {}
@@ -204,20 +202,74 @@ def get_weekly_summary():
                 "dia_semana": fecha.strftime('%A')
             })
         
-        return jsonify(resumen_semanal[::-1])  # Orden cronológico
+        return jsonify(resumen_semanal[::-1])
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/update_data', methods=['POST'])
+# ============================================================
+# ENDPOINT PRINCIPAL PARA LA CÁMARA - ACEPTA MÚLTIPLES FORMATOS
+# ============================================================
+@app.route('/update_data', methods=['GET', 'POST', 'PUT'])
 @rate_limit(max_requests=120, window=60)
 def update_data():
-    """Recibe ventas desde la cámara GeoVision o desde el botón manual"""
+    """Recibe ventas desde la cámara GeoVision o botón manual"""
     try:
-        data = request.get_json(silent=True) or {}
-        precio = int(data.get('valor_venta', PRECIO_GRANIZADO))
-        metodo = data.get('metodo', 'GeoVision Automático')
-        observacion = data.get('observacion', '')
+        precio = PRECIO_GRANIZADO
+        metodo = "GeoVision Automático"
+        observacion = ""
+        
+        print(f"📥 Solicitud recibida - Método: {request.method}")
+        
+        # --- CASO 1: GET parameters (cámara GeoVision típica) ---
+        if request.method == 'GET':
+            precio = int(request.args.get('valor_venta', 
+                       request.args.get('precio', 
+                       request.args.get('venta', 
+                       request.args.get('monto', PRECIO_GRANIZADO)))))
+            metodo = request.args.get('metodo', 'GeoVision GET')
+            observacion = request.args.get('observacion', '')
+            print(f"📸 GET recibido - precio: ${precio}")
+        
+        # --- CASO 2: POST JSON ---
+        elif request.method == 'POST' and request.is_json:
+            data = request.get_json(silent=True) or {}
+            precio = int(data.get('valor_venta', data.get('precio', PRECIO_GRANIZADO)))
+            metodo = data.get('metodo', 'GeoVision JSON')
+            observacion = data.get('observacion', '')
+            print(f"📸 POST JSON - precio: ${precio}")
+        
+        # --- CASO 3: POST Form (formulario tradicional) ---
+        elif request.method == 'POST' and request.form:
+            precio = int(request.form.get('valor_venta', 
+                       request.form.get('precio', 
+                       request.form.get('venta', PRECIO_GRANIZADO))))
+            metodo = request.form.get('metodo', 'GeoVision Form')
+            observacion = request.form.get('observacion', '')
+            print(f"📸 POST Form - precio: ${precio}")
+        
+        # --- CASO 4: POST Raw text (texto plano) ---
+        elif request.method == 'POST':
+            raw_data = request.get_data(as_text=True)
+            if raw_data and raw_data.strip():
+                # Intentar parsear como número
+                try:
+                    if raw_data.strip().isdigit():
+                        precio = int(raw_data.strip())
+                        metodo = "GeoVision Raw Number"
+                        observacion = f"Dato crudo: {raw_data}"
+                    else:
+                        # Intentar parsear como JSON
+                        try:
+                            data = json.loads(raw_data)
+                            precio = int(data.get('valor_venta', data.get('precio', PRECIO_GRANIZADO)))
+                            metodo = data.get('metodo', 'GeoVision Raw JSON')
+                            observacion = data.get('observacion', '')
+                        except:
+                            observacion = f"Dato no reconocido: {raw_data[:100]}"
+                except:
+                    observacion = f"Error parsing: {raw_data[:100]}"
+            print(f"📸 POST Raw - precio: ${precio}")
 
         comision = round(precio * COMISION_PORCENTAJE)
 
@@ -227,16 +279,43 @@ def update_data():
             "valor_venta": precio,
             "comision_empleado": comision,
             "metodo": metodo,
-            "observacion": observacion
+            "observacion": observacion or f"Recibido vía {request.method}"
         }
         ref.push(nueva_venta)
         
         print(f"✅ Venta registrada: {metodo} - ${precio} - {datetime.now().strftime('%H:%M:%S')}")
-        return jsonify({"status": "ok", "venta": nueva_venta}), 200
+        
+        # Respuesta simple que cualquier cámara pueda entender
+        return jsonify({
+            "status": "ok",
+            "message": "Venta registrada exitosamente",
+            "precio": precio,
+            "timestamp": nueva_venta["timestamp"]
+        }), 200
 
     except Exception as e:
-        print(f"❌ Error en recepción: {e}")
+        print(f"❌ Error en update_data: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+# ============================================================
+# ENDPOINT DE PRUEBA PARA VERIFICAR CONEXIÓN
+# ============================================================
+@app.route('/test_camera', methods=['GET'])
+def test_camera():
+    """Endpoint de prueba para verificar que la cámara puede comunicarse"""
+    return jsonify({
+        "status": "ok",
+        "message": "Servidor funcionando correctamente",
+        "time": datetime.now().isoformat(),
+        "endpoints_disponibles": {
+            "ventas_por_get": "/update_data?valor_venta=5000",
+            "ventas_por_post": "/update_data (POST JSON)",
+            "estadisticas": "/get_stats",
+            "dashboard": "/"
+        }
+    }), 200
+
 
 @app.route('/export_csv')
 @rate_limit(max_requests=10, window=60)
@@ -280,6 +359,51 @@ def export_csv():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ============================================================
+# ENDPOINT COMPATIBLE CON GEOVISION (formato específico)
+# ============================================================
+@app.route('/geovision', methods=['GET', 'POST'])
+def geovision_webhook():
+    """Endpoint específico para GeoVision con formato simplificado"""
+    try:
+        # Extraer valor de diferentes formas
+        valor = PRECIO_GRANIZADO
+        
+        if request.method == 'GET':
+            valor = int(request.args.get('valor', request.args.get('v', request.args.get('precio', PRECIO_GRANIZADO))))
+        else:
+            if request.is_json:
+                data = request.get_json()
+                valor = int(data.get('valor', data.get('v', data.get('precio', PRECIO_GRANIZADO))))
+            elif request.form:
+                valor = int(request.form.get('valor', request.form.get('v', PRECIO_GRANIZADO)))
+            else:
+                raw = request.get_data(as_text=True)
+                if raw and raw.strip().isdigit():
+                    valor = int(raw.strip())
+        
+        comision = round(valor * COMISION_PORCENTAJE)
+        
+        ref = db.reference('ventas_granizados')
+        nueva_venta = {
+            "timestamp": datetime.now().isoformat(),
+            "valor_venta": valor,
+            "comision_empleado": comision,
+            "metodo": "GeoVision Cámara",
+            "observacion": f"Recibido en endpoint /geovision"
+        }
+        ref.push(nueva_venta)
+        
+        print(f"📷 GeoVision: Venta de ${valor} registrada")
+        
+        # Respuesta en texto plano (lo que esperan algunas cámaras)
+        return "OK", 200
+        
+    except Exception as e:
+        print(f"❌ Error GeoVision: {e}")
+        return "ERROR", 500
+
+
 @app.errorhandler(429)
 def too_many_requests(e):
     return jsonify({"error": "Demasiadas solicitudes. Espera un momento."}), 429
@@ -290,4 +414,4 @@ def server_error(e):
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    app.run(debug=False, host='0.0.0.0', port=port)  # debug=False para producción
+    app.run(debug=False, host='0.0.0.0', port=port)
