@@ -236,16 +236,6 @@
             font-family: 'DM Mono', monospace;
         }
 
-        /* Tanque visual */
-        .tanque-wrap {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            margin-top: 8px;
-        }
-
-        .tanque-svg { flex-shrink: 0; }
-
         /* Bottom grid */
         .bottom-grid {
             display: grid;
@@ -520,9 +510,10 @@
         document.getElementById('loading').style.display = 'inline-block';
 
         try {
+            // CORRECCIÓN: se pasa la fecha también a /get_stats
             const [resData, resStats] = await Promise.all([
                 fetch(`/get_data${fecha ? '?fecha=' + fecha : ''}`),
-                fetch('/get_stats')
+                fetch(`/get_stats${fecha ? '?fecha=' + fecha : ''}`)
             ]);
             const data = await resData.json();
             const stats = await resStats.json();
@@ -664,9 +655,12 @@
         window.location.href = `/export_csv${fecha ? '?fecha=' + fecha : ''}`;
     }
 
-    // Actualizar cada 5 segundos
+    // Actualizar automáticamente cada 5 segundos
     setInterval(cargarDatos, 5000);
     cargarDatos();
 </script>
+</body>
+</html>
+
 </body>
 </html>
