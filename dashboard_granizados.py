@@ -77,17 +77,7 @@ def login_required(f):
 def index():
     return render_template('index.html')
 
-@app.route('/login')
-def login_page():
-    return render_template('login.html')
 
-@app.route('/api/login', methods=['POST'])
-def login():
-    data = request.get_json()
-    if data.get('password') == PASSWORD_ADMIN:
-        session['logged_in'] = True
-        return jsonify({"success": True})
-    return jsonify({"success": False}), 401
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
