@@ -30,7 +30,6 @@
             min-height: 100vh;
         }
 
-        /* Header */
         header {
             background: var(--surface);
             border-bottom: 1px solid var(--border);
@@ -43,11 +42,7 @@
             z-index: 100;
         }
 
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
+        .logo { display: flex; align-items: center; gap: 12px; }
 
         .logo-icon {
             width: 38px; height: 38px;
@@ -66,32 +61,32 @@
 
         .logo span { color: var(--accent); }
 
-        .header-right {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
+        .header-right { display: flex; align-items: center; gap: 16px; }
 
         .live-dot {
             display: flex; align-items: center; gap: 8px;
-            font-size: 0.78rem; color: var(--muted);
+            font-size: 0.78rem;
             font-family: 'DM Mono', monospace;
+            transition: color 0.3s;
         }
 
-        .live-dot::before {
-            content: '';
+        .live-dot .dot {
             width: 8px; height: 8px;
-            background: var(--accent);
             border-radius: 50%;
+            background: var(--accent);
             animation: pulse 2s infinite;
+            transition: background 0.3s;
         }
+
+        .live-dot.error .dot { background: var(--danger); animation: none; }
+        .live-dot.error { color: var(--danger); }
+        .live-dot.ok { color: var(--muted); }
 
         @keyframes pulse {
             0%, 100% { opacity: 1; transform: scale(1); }
             50% { opacity: 0.5; transform: scale(0.8); }
         }
 
-        /* Controls */
         .controls {
             padding: 20px 32px;
             display: flex;
@@ -127,25 +122,13 @@
             display: flex; align-items: center; gap: 6px;
         }
 
-        .btn-primary {
-            background: var(--accent);
-            color: #0d0f14;
-        }
-
+        .btn-primary { background: var(--accent); color: #0d0f14; }
         .btn-primary:hover { background: #00c988; transform: translateY(-1px); }
-
-        .btn-outline {
-            background: transparent;
-            border: 1px solid var(--border);
-            color: var(--text);
-        }
-
+        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
         .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
 
-        /* Main layout */
         main { padding: 0 32px 40px; }
 
-        /* KPI Cards */
         .kpi-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -173,7 +156,6 @@
         .kpi-card.green::before { background: var(--accent); }
         .kpi-card.blue::before { background: var(--accent2); }
         .kpi-card.amber::before { background: var(--accent3); }
-        .kpi-card.red::before { background: var(--danger); }
 
         @keyframes fadeUp {
             from { opacity: 0; transform: translateY(16px); }
@@ -183,7 +165,6 @@
         .kpi-card:nth-child(2) { animation-delay: 0.08s; }
         .kpi-card:nth-child(3) { animation-delay: 0.16s; }
         .kpi-card:nth-child(4) { animation-delay: 0.24s; }
-        .kpi-card:nth-child(5) { animation-delay: 0.32s; }
 
         .kpi-label {
             font-size: 0.75rem;
@@ -200,6 +181,12 @@
             font-weight: 800;
             line-height: 1;
             margin-bottom: 6px;
+            transition: all 0.4s ease;
+        }
+
+        .kpi-value.flash {
+            color: var(--accent);
+            transform: scale(1.05);
         }
 
         .kpi-sub {
@@ -208,7 +195,6 @@
             font-family: 'DM Mono', monospace;
         }
 
-        /* Progress bar */
         .meta-card { grid-column: span 2; }
 
         .progress-track {
@@ -236,7 +222,6 @@
             font-family: 'DM Mono', monospace;
         }
 
-        /* Bottom grid */
         .bottom-grid {
             display: grid;
             grid-template-columns: 1fr 2fr;
@@ -276,14 +261,9 @@
             color: var(--muted);
         }
 
-        /* Tabla */
         .tabla-wrap { overflow-x: auto; }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.85rem;
-        }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 
         th {
             text-align: left;
@@ -318,9 +298,7 @@
         .badge-cam { background: rgba(0,229,160,0.15); color: var(--accent); }
         .badge-manual { background: rgba(59,130,246,0.15); color: var(--accent2); }
 
-        /* Alerta */
         #alerta-meta {
-            display: none;
             background: linear-gradient(135deg, #065f46, #047857);
             border: 1px solid var(--accent);
             border-radius: var(--card-radius);
@@ -332,7 +310,7 @@
             gap: 14px;
         }
 
-        #alerta-meta.hidden { display: none !important; }
+        #alerta-meta.hidden { display: none; }
 
         @keyframes slideIn {
             from { opacity: 0; transform: translateY(-10px); }
@@ -343,7 +321,6 @@
         .alerta-text h3 { font-family: 'Syne', sans-serif; font-size: 1rem; }
         .alerta-text p { font-size: 0.82rem; color: rgba(255,255,255,0.7); margin-top: 2px; }
 
-        /* Empty state */
         .empty {
             text-align: center;
             padding: 40px;
@@ -353,24 +330,18 @@
 
         .empty .icon { font-size: 2.5rem; margin-bottom: 10px; }
 
-        /* Spinner */
-        .spinner {
-            display: inline-block;
-            width: 18px; height: 18px;
-            border: 2px solid var(--border);
-            border-top-color: var(--accent);
-            border-radius: 50%;
-            animation: spin 0.7s linear infinite;
-        }
-
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        /* Scroll suave */
         .tabla-cuerpo-wrap { max-height: 380px; overflow-y: auto; }
 
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: var(--surface2); }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+
+        /* Animación nueva fila */
+        @keyframes rowFlash {
+            0% { background: rgba(0,229,160,0.2); }
+            100% { background: transparent; }
+        }
+        .row-new td { animation: rowFlash 1.5s ease forwards; }
     </style>
 </head>
 <body>
@@ -381,7 +352,10 @@
         <h1>Bar <span>Granizados</span></h1>
     </div>
     <div class="header-right">
-        <div class="live-dot">EN VIVO</div>
+        <div class="live-dot ok" id="estado-conexion">
+            <div class="dot"></div>
+            <span id="estado-texto">CONECTANDO...</span>
+        </div>
         <span id="reloj" style="font-family:'DM Mono',monospace;font-size:0.8rem;color:var(--muted);"></span>
     </div>
 </header>
@@ -390,12 +364,10 @@
     <input type="date" id="fecha-filtro" class="date-input" title="Filtrar por fecha">
     <button class="btn btn-primary" onclick="aplicarFiltro()">⟳ Actualizar</button>
     <button class="btn btn-outline" onclick="exportarCSV()">↓ Exportar CSV</button>
-    <span id="loading" style="display:none;"><span class="spinner"></span></span>
 </div>
 
 <main>
 
-    <!-- Alerta meta -->
     <div id="alerta-meta" class="hidden">
         <div class="alerta-icon">🎉</div>
         <div class="alerta-text">
@@ -404,7 +376,6 @@
         </div>
     </div>
 
-    <!-- KPIs -->
     <div class="kpi-grid">
         <div class="kpi-card green meta-card">
             <div class="kpi-label">Progreso hacia la meta</div>
@@ -433,7 +404,7 @@
             <div class="kpi-sub">10% sobre ventas</div>
         </div>
 
-        <div class="kpi-card" style="border-top: 3px solid var(--accent);">
+        <div class="kpi-card" style="border-top:3px solid var(--accent);">
             <div class="kpi-label">Tanque de mezcla</div>
             <div class="kpi-value" id="kpi-litros">12.0 L</div>
             <div class="kpi-sub" id="kpi-litros-sub">Sin consumo registrado</div>
@@ -443,7 +414,6 @@
         </div>
     </div>
 
-    <!-- Gráfica + Tabla -->
     <div class="bottom-grid">
         <div class="panel">
             <div class="panel-title">
@@ -472,7 +442,7 @@
                 <div class="tabla-cuerpo-wrap">
                     <table>
                         <tbody id="tabla-cuerpo">
-                            <tr><td colspan="4" class="empty"><div class="icon">📊</div>Cargando datos...</td></tr>
+                            <tr><td colspan="4" class="empty"><div class="icon">📊</div>Conectando a Firebase...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -482,15 +452,38 @@
 
 </main>
 
-<script>
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, onValue, query, orderByChild } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    // --- CONFIG FIREBASE ---
+    const firebaseConfig = {
+        apiKey: "AIzaSyDwvA4lhR5lpc_4ucUCUJ2OyuP4x8pcTGM",
+        authDomain: "control-granizados.firebaseapp.com",
+        databaseURL: "https://control-granizados-default-rtdb.firebaseio.com",
+        projectId: "control-granizados",
+        storageBucket: "control-granizados.firebasestorage.app",
+        messagingSenderId: "755286383921",
+        appId: "1:755286383921:web:578f2f3a86767b21dbe410"
+    };
+
+    const appFB = initializeApp(firebaseConfig);
+    const database = getDatabase(appFB);
+
+    // --- CONSTANTES ---
     const META = 103833;
     const CAPACIDAD = 12.0;
+    const CONSUMO = 0.25;
+    const COMISION_PORC = 0.10;
+
     let grafica = null;
+    let unsubscribe = null;
 
     // --- Reloj ---
     function actualizarReloj() {
         const now = new Date();
-        document.getElementById('reloj').textContent = now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        document.getElementById('reloj').textContent =
+            now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
     setInterval(actualizarReloj, 1000);
     actualizarReloj();
@@ -499,93 +492,85 @@
     const hoy = new Date().toISOString().split('T')[0];
     document.getElementById('fecha-filtro').value = hoy;
 
-    // --- Formatear pesos colombianos ---
+    // --- Formatear pesos ---
     function fmt(n) {
         return '$' + Math.round(n).toLocaleString('es-CO');
     }
 
-    // --- Cargar datos + estadísticas ---
-    async function cargarDatos() {
-        const fecha = document.getElementById('fecha-filtro').value;
-        // Cache-buster: evita que el navegador devuelva respuesta guardada
-        const ts = Date.now();
-
-        try {
-            const [resData, resStats] = await Promise.all([
-                fetch(`/get_data${fecha ? '?fecha=' + fecha : '?'}&_=${ts}`, { cache: 'no-store' }),
-                fetch(`/get_stats${fecha ? '?fecha=' + fecha : '?'}&_=${ts}`, { cache: 'no-store' })
-            ]);
-            const data = await resData.json();
-            const stats = await resStats.json();
-
-            renderKPIs(stats);
-            renderTabla(data);
-            renderGrafica(stats.por_hora || {}, fecha === hoy ? 'HOY' : fecha);
-            setEstado('ok');
-
-        } catch (e) {
-            console.error('Error cargando datos:', e);
-            setEstado('error');
-        }
-    }
-
-    // --- Indicador de estado de conexión ---
+    // --- Estado de conexión ---
     function setEstado(estado) {
-        const dot = document.querySelector('.live-dot');
-        if (estado === 'ok') {
-            dot.style.color = '';
-            dot.textContent = 'EN VIVO';
-            dot.style.setProperty('--dot-color', 'var(--accent)');
-        } else {
-            dot.style.color = 'var(--danger)';
-            dot.textContent = 'RECONECTANDO...';
-        }
+        const el = document.getElementById('estado-conexion');
+        const txt = document.getElementById('estado-texto');
+        el.className = 'live-dot ' + estado;
+        if (estado === 'ok') txt.textContent = 'EN VIVO';
+        else if (estado === 'error') txt.textContent = 'SIN CONEXIÓN';
+        else txt.textContent = 'CONECTANDO...';
     }
 
-    function renderKPIs(stats) {
-        const total = stats.total_hoy || 0;
-        const ventas = stats.ventas_hoy || 0;
-        const comision = stats.comision_total || 0;
-        const litrosRestantes = stats.litros_restantes ?? CAPACIDAD;
+    // --- Flash en KPI cuando cambia ---
+    function flashEl(id) {
+        const el = document.getElementById(id);
+        el.classList.remove('flash');
+        void el.offsetWidth; // reflow
+        el.classList.add('flash');
+        setTimeout(() => el.classList.remove('flash'), 400);
+    }
+
+    // --- Renderizar KPIs ---
+    function renderKPIs(ventas) {
+        const total = ventas.reduce((s, v) => s + (v.valor_venta || 0), 0);
+        const count = ventas.length;
+        const comision = Math.round(total * COMISION_PORC);
+        const litrosConsumidos = count * CONSUMO;
+        const litrosRestantes = Math.max(0, CAPACIDAD - litrosConsumidos);
         const porc = Math.min((total / META) * 100, 100);
-        const litrosPorc = (litrosRestantes / CAPACIDAD) * 100;
 
         document.getElementById('kpi-total').textContent = fmt(total);
-        document.getElementById('kpi-ventas').textContent = ventas;
+        document.getElementById('kpi-ventas').textContent = count;
         document.getElementById('kpi-comision').textContent = fmt(comision);
         document.getElementById('kpi-litros').textContent = litrosRestantes.toFixed(1) + ' L';
-        document.getElementById('kpi-litros-sub').textContent = `${(CAPACIDAD - litrosRestantes).toFixed(2)}L consumidos`;
-
+        document.getElementById('kpi-litros-sub').textContent = litrosConsumidos.toFixed(2) + 'L consumidos';
         document.getElementById('barra-meta').style.width = porc + '%';
-        document.getElementById('barra-tanque').style.width = litrosPorc + '%';
-        document.getElementById('porc-meta').textContent = (stats.porcentaje_meta || 0) + '%';
+        document.getElementById('barra-tanque').style.width = (litrosRestantes / CAPACIDAD * 100) + '%';
+        document.getElementById('porc-meta').textContent = porc.toFixed(1) + '%';
 
         // Alerta meta
         const alerta = document.getElementById('alerta-meta');
         if (total >= META) {
             alerta.classList.remove('hidden');
-            document.getElementById('alerta-sub').textContent = `¡Llevas ${fmt(total)} — ${fmt(total - META)} sobre la meta!`;
+            document.getElementById('alerta-sub').textContent =
+                `¡Llevas ${fmt(total)} — ${fmt(total - META)} sobre la meta!`;
         } else {
             alerta.classList.add('hidden');
         }
+
+        flashEl('kpi-ventas');
+        flashEl('kpi-total');
     }
 
-    function renderTabla(data) {
+    // --- Renderizar tabla ---
+    function renderTabla(ventas) {
         const tbody = document.getElementById('tabla-cuerpo');
-        document.getElementById('badge-count').textContent = data.length + ' registros';
+        document.getElementById('badge-count').textContent = ventas.length + ' registros';
 
-        if (!data || data.length === 0) {
+        if (!ventas.length) {
             tbody.innerHTML = `<tr><td colspan="4" class="empty"><div class="icon">🧊</div>No hay ventas registradas</td></tr>`;
             return;
         }
 
-        tbody.innerHTML = data.map(v => {
-            const hora = new Date(v.timestamp).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        // Ordenar más reciente primero
+        const sorted = [...ventas].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+        tbody.innerHTML = sorted.map((v, i) => {
+            const hora = new Date(v.timestamp).toLocaleTimeString('es-CO', {
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
             const esAuto = v.metodo && v.metodo.includes('GeoVision');
             const badge = esAuto
                 ? '<span class="badge badge-cam">📹 Cámara</span>'
                 : '<span class="badge badge-manual">✋ Manual</span>';
-            return `<tr>
+            const esNueva = i === 0 ? 'row-new' : '';
+            return `<tr class="${esNueva}">
                 <td>${hora}</td>
                 <td>${badge}</td>
                 <td>${fmt(v.valor_venta || 0)}</td>
@@ -594,11 +579,18 @@
         }).join('');
     }
 
-    function renderGrafica(porHora, labelFecha) {
+    // --- Renderizar gráfica ---
+    function renderGrafica(ventas, labelFecha) {
         document.getElementById('chart-fecha').textContent = labelFecha;
 
+        const porHora = {};
+        ventas.forEach(v => {
+            const hora = new Date(v.timestamp).getHours();
+            porHora[hora] = (porHora[hora] || 0) + 1;
+        });
+
         const horas = Array.from({ length: 24 }, (_, i) => i);
-        const valores = horas.map(h => porHora[String(h)] || 0);
+        const valores = horas.map(h => porHora[h] || 0);
         const labels = horas.map(h => h + ':00');
 
         if (grafica) {
@@ -633,27 +625,17 @@
                         borderWidth: 1,
                         titleColor: '#e8eaf0',
                         bodyColor: '#00e5a0',
-                        callbacks: {
-                            label: ctx => ` ${ctx.parsed.y} granizado(s)`
-                        }
+                        callbacks: { label: ctx => ` ${ctx.parsed.y} granizado(s)` }
                     }
                 },
                 scales: {
                     x: {
                         grid: { color: '#1e2330' },
-                        ticks: {
-                            color: '#6b7280',
-                            font: { family: 'DM Mono', size: 10 },
-                            maxTicksLimit: 12
-                        }
+                        ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: 12 }
                     },
                     y: {
                         grid: { color: '#1e2330' },
-                        ticks: {
-                            color: '#6b7280',
-                            font: { family: 'DM Mono', size: 10 },
-                            stepSize: 1
-                        },
+                        ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, stepSize: 1 },
                         beginAtZero: true
                     }
                 }
@@ -661,25 +643,62 @@
         });
     }
 
-    function aplicarFiltro() { cargarDatos(); }
+    // --- Escuchar Firebase en tiempo real ---
+    function escucharFecha(fecha) {
+        // Cancelar listener anterior si existe
+        if (unsubscribe) {
+            unsubscribe();
+            unsubscribe = null;
+        }
 
-    function exportarCSV() {
-        const fecha = document.getElementById('fecha-filtro').value;
-        window.location.href = `/export_csv${fecha ? '?fecha=' + fecha : ''}`;
+        setEstado('conectando');
+
+        const dbRef = ref(database, 'ventas_granizados');
+        const esHoy = fecha === hoy;
+        const label = esHoy ? 'HOY' : fecha;
+
+        unsubscribe = onValue(dbRef, (snapshot) => {
+            setEstado('ok');
+
+            const datos = snapshot.val();
+            if (!datos) {
+                renderTabla([]);
+                renderKPIs([]);
+                renderGrafica([], label);
+                return;
+            }
+
+            // Filtrar por fecha seleccionada
+            const todas = Object.values(datos);
+            const filtradas = todas.filter(v => {
+                if (!v.timestamp) return false;
+                return v.timestamp.startsWith(fecha);
+            });
+
+            renderKPIs(filtradas);
+            renderTabla(filtradas);
+            renderGrafica(filtradas, label);
+
+        }, (error) => {
+            console.error('Firebase error:', error);
+            setEstado('error');
+        });
     }
 
-    // Actualizar cada 3 segundos
-    setInterval(cargarDatos, 3000);
-    cargarDatos();
+    // --- Aplicar filtro de fecha ---
+    window.aplicarFiltro = function() {
+        const fecha = document.getElementById('fecha-filtro').value;
+        escucharFecha(fecha);
+    };
 
-    // Keep-alive: evita que Render duerma el servidor (ping cada 10 min)
-    setInterval(() => {
-        fetch("/get_stats?_keepalive=1", { cache: "no-store" }).catch(() => {});
-    }, 10 * 60 * 1000);
+    // --- Exportar CSV (sigue usando el backend) ---
+    window.exportarCSV = function() {
+        const fecha = document.getElementById('fecha-filtro').value;
+        window.location.href = `/export_csv${fecha ? '?fecha=' + fecha : ''}`;
+    };
+
+    // --- Iniciar escucha ---
+    escucharFecha(hoy);
 </script>
-</body>
-</html>
-
-
 </body>
 </html>
