@@ -3,7 +3,7 @@ import json
 from datetime import datetime, date
 from functools import wraps
 from time import time
-from flask import Flask, render_template, jsonify, request, abort
+from flask import Flask, render_template, jsonify, request, abort, Response
 import firebase_admin
 from firebase_admin import credentials, db
 
@@ -32,16 +32,15 @@ else:
 
 # --- CONSTANTES DE NEGOCIO ---
 PRECIO_GRANIZADO = 5000
-COMISION_PORCENTAJE = 0.10  # 10% de comisión al empleado
+COMISION_PORCENTAJE = 0.10
 META_DIARIA = 103833
-CAPACIDAD_TANQUE = 12.0  # litros
-CONSUMO_POR_GRANIZADO = 0.25  # litros por granizado
+CAPACIDAD_TANQUE = 12.0
+CONSUMO_POR_GRANIZADO = 0.25
 
 # --- RATE LIMITING SIMPLE ---
 request_counts = {}
 
 def rate_limit(max_requests=30, window=60):
-    """Limita peticiones por IP: max_requests por ventana de segundos."""
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
@@ -49,7 +48,6 @@ def rate_limit(max_requests=30, window=60):
             now = time()
             if ip not in request_counts:
                 request_counts[ip] = []
-            # Limpiar solicitudes viejas
             request_counts[ip] = [t for t in request_counts[ip] if now - t < window]
             if len(request_counts[ip]) >= max_requests:
                 abort(429)
@@ -64,18 +62,14 @@ def rate_limit(max_requests=30, window=60):
 def index():
     return render_template('index.html')
 
-
 def no_cache(response):
-    """Agrega headers para evitar caché en el navegador."""
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     response.headers['Pragma'] = 'no-cache'
     return response
 
-
 @app.route('/get_data')
 @rate_limit(max_requests=60, window=60)
 def get_data():
-    """Retorna todas las ventas, opcionalmente filtradas por fecha."""
     try:
         ref = db.reference('ventas_granizados')
         datos = ref.get()
@@ -84,14 +78,13 @@ def get_data():
 
         lista_ventas = [val for key, val in datos.items()]
 
-        # Filtro por fecha (parámetro opcional ?fecha=YYYY-MM-DD)
         fecha_filtro = request.args.get('fecha')
         if fecha_filtro:
             try:
                 fecha_obj = datetime.strptime(fecha_filtro, '%Y-%m-%d').date()
                 lista_ventas = [
                     v for v in lista_ventas
-                    if datetime.fromisoformat(v.get('timestamp', '')).date() == fecha_obj
+                    if datetime.fromisoformat(v.get('timestamp', '').replace('Z', '')).date() == fecha_obj
                 ]
             except ValueError:
                 return jsonify({"error": "Formato de fecha inválido. Use YYYY-MM-DD"}), 400
@@ -102,18 +95,15 @@ def get_data():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 @app.route('/get_stats')
 @rate_limit(max_requests=60, window=60)
 def get_stats():
-    """Retorna estadísticas agregadas. Acepta ?fecha=YYYY-MM-DD opcional."""
     try:
         ref = db.reference('ventas_granizados')
         datos = ref.get()
         if not datos:
             return no_cache(jsonify({"por_hora": {}, "total_hoy": 0, "ventas_hoy": 0}))
 
-        # --- CORRECCIÓN: respetar el filtro de fecha enviado desde el frontend ---
         fecha_filtro = request.args.get('fecha')
         if fecha_filtro:
             try:
@@ -125,12 +115,12 @@ def get_stats():
 
         ventas_dia = [
             val for val in datos.values()
-            if datetime.fromisoformat(val.get('timestamp', '')).date() == dia
+            if datetime.fromisoformat(val.get('timestamp', '').replace('Z', '')).date() == dia
         ]
 
         por_hora = {}
         for v in ventas_dia:
-            hora = datetime.fromisoformat(v['timestamp']).hour
+            hora = datetime.fromisoformat(v['timestamp'].replace('Z', '')).hour
             por_hora[str(hora)] = por_hora.get(str(hora), 0) + 1
 
         total_dia = sum(v.get('valor_venta', 0) for v in ventas_dia)
@@ -143,19 +133,16 @@ def get_stats():
             "comision_total": round(total_dia * COMISION_PORCENTAJE),
             "litros_consumidos": litros_consumidos,
             "litros_restantes": max(0, CAPACIDAD_TANQUE - litros_consumidos),
-            "porcentaje_meta": round((total_dia / META_DIARIA) * 100, 1)
+            "porcentaje_meta": round((total_dia / META_DIARIA) * 100, 1) if META_DIARIA > 0 else 0
         }))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 @app.route('/update_data', methods=['POST', 'GET'])
 @rate_limit(max_requests=120, window=60)
 def update_data():
-    """Registra una nueva venta (desde cámara GeoVision u otro origen)."""
     try:
-        # Permitir precio personalizado si viene en el body
         precio = PRECIO_GRANIZADO
         metodo = "GeoVision Automático"
 
@@ -168,7 +155,7 @@ def update_data():
 
         ref = db.reference('ventas_granizados')
         nueva_venta = {
-            "timestamp": datetime.utcnow().isoformat() + 'Z',
+            "timestamp": datetime.now().isoformat(),
             "valor_venta": precio,
             "comision_empleado": comision,
             "metodo": metodo
@@ -180,13 +167,10 @@ def update_data():
         print(f"Error en recepción: {e}")
         return jsonify({"error": str(e)}), 500
 
-
 @app.route('/export_csv')
 @rate_limit(max_requests=10, window=60)
 def export_csv():
-    """Exporta ventas a CSV descargable."""
     try:
-        from flask import Response
         ref = db.reference('ventas_granizados')
         datos = ref.get()
 
@@ -198,7 +182,7 @@ def export_csv():
                 fecha_obj = datetime.strptime(fecha_filtro, '%Y-%m-%d').date()
                 lista = [
                     v for v in lista
-                    if datetime.fromisoformat(v.get('timestamp', '')).date() == fecha_obj
+                    if datetime.fromisoformat(v.get('timestamp', '').replace('Z', '')).date() == fecha_obj
                 ]
             except ValueError:
                 pass
@@ -223,8 +207,50 @@ def export_csv():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# --- NUEVO ENDPOINT: REINICIO COMPLETO ---
+@app.route('/reset_all', methods=['POST'])
+@rate_limit(max_requests=5, window=300)
+def reset_all():
+    """
+    Elimina TODOS los registros de ventas de Firebase.
+    Requiere confirmación explícita.
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        confirm = body.get('confirm', False)
+        
+        if not confirm:
+            return jsonify({
+                "error": "Se requiere confirmación explícita. Envía confirm: true"
+            }), 400
+        
+        ref = db.reference('ventas_granizados')
+        datos = ref.get()
+        
+        if not datos:
+            return jsonify({
+                "status": "ok",
+                "message": "La base de datos ya estaba vacía",
+                "registros_eliminados": 0
+            }), 200
+        
+        cantidad = len(datos)
+        
+        # Eliminar cada registro
+        for key in datos.keys():
+            ref.child(key).delete()
+        
+        return jsonify({
+            "status": "ok",
+            "message": f"Se eliminaron {cantidad} registros exitosamente",
+            "registros_eliminados": cantidad,
+            "timestamp": datetime.now().isoformat()
+        }), 200
+        
+    except Exception as e:
+        print(f"Error en reset_all: {e}")
+        return jsonify({"error": str(e)}), 500
 
-# Manejo de errores HTTP
 @app.errorhandler(429)
 def too_many_requests(e):
     return jsonify({"error": "Demasiadas solicitudes. Espera un momento."}), 429
@@ -233,8 +259,6 @@ def too_many_requests(e):
 def server_error(e):
     return jsonify({"error": "Error interno del servidor."}), 500
 
-
-# --- INICIO DEL SERVIDOR ---
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(debug=True, host='0.0.0.0', port=port)
