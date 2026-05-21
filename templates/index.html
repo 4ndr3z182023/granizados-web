@@ -529,8 +529,11 @@
     setInterval(actualizarReloj, 1000);
     actualizarReloj();
 
-    const hoy = new Date().toISOString().split('T')[0];
-    document.getElementById('fecha-filtro').value = hoy;
+    // Obtener fecha de hoy en formato local YYYY-MM-DD ajustado a la zona horaria de Colombia
+    const d = new Date();
+    const offset = d.getTimezoneOffset();
+    const fechaLocalCO = new Date(d.getTime() - (offset * 60 * 1000)).toISOString().split('T')[0];
+    document.getElementById('fecha-filtro').value = fechaLocalCO;
 
     function fmt(n) {
         return '$' + Math.round(n).toLocaleString('es-CO');
@@ -593,17 +596,16 @@
         }
 
         const sorted = [...ventas].sort((a, b) => {
-            const timeA = a.timestamp ? new Date(a.timestamp.replace('Z', '')) : new Date(0);
-            const timeB = b.timestamp ? new Date(b.timestamp.replace('Z', '')) : new Date(0);
-            return timeB - timeA;
+            return new Date(b.timestamp.replace('Z', '')) - new Date(a.timestamp.replace('Z', ''));
         });
 
         tbody.innerHTML = sorted.map((v, i) => {
             if (!v.timestamp) return '';
             
             const tsLimpio = v.timestamp.replace('Z', '');
+            // Forzar interpretación nativa sin desfase UTC
             const hora = new Date(tsLimpio).toLocaleTimeString('es-CO', {
-                hour: '2-digit', minute: '2-digit', second: '2-digit'
+                hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
             });
             
             const esAuto = v.metodo && v.metodo.includes('GeoVision');
@@ -627,8 +629,7 @@
         const porHora = {};
         ventas.forEach(v => {
             if (!v.timestamp) return;
-            const tsLimpio = v.timestamp.replace('Z', '');
-            const hora = new Date(tsLimpio).getHours();
+            const hora = new Date(v.timestamp.replace('Z', '')).getHours();
             porHora[hora] = (porHora[hora] || 0) + 1;
         });
 
@@ -695,7 +696,7 @@
         setEstado('conectando');
 
         const dbRef = ref(database, 'ventas_granizados');
-        const esHoy = fecha === hoy;
+        const esHoy = fecha === fechaLocalCO;
         const label = esHoy ? 'HOY' : fecha;
 
         unsubscribe = onValue(dbRef, (snapshot) => {
@@ -765,7 +766,7 @@
         window.location.href = `/export_csv${fecha ? '?fecha=' + fecha : ''}`;
     };
 
-    escucharFecha(hoy);
+    escucharFecha(fechaLocalCO);
 </script>
 </body>
 </html>
