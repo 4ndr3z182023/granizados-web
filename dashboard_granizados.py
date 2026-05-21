@@ -9,6 +9,10 @@ from firebase_admin import credentials, db
 
 app = Flask(__name__)
 
+# --- TOKEN DE SEGURIDAD PARA REINICIO ---
+# ¡CAMBIAR ESTE TOKEN POR UNO SEGURO!
+RESET_TOKEN = "MiTokenSeguro2024!"  # Cambia esto por un token único y seguro
+
 # --- CONFIGURACIÓN DE SEGURIDAD PARA FIREBASE ---
 firebase_json = os.environ.get('FIREBASE_JSON_DATA')
 
@@ -113,7 +117,6 @@ def get_stats():
         if not datos:
             return no_cache(jsonify({"por_hora": {}, "total_hoy": 0, "ventas_hoy": 0}))
 
-        # --- CORRECCIÓN: respetar el filtro de fecha enviado desde el frontend ---
         fecha_filtro = request.args.get('fecha')
         if fecha_filtro:
             try:
@@ -181,6 +184,53 @@ def update_data():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/reset_data', methods=['POST'])
+@rate_limit(max_requests=5, window=60)  # Límite más estricto para reinicios
+def reset_data():
+    """ELIMINA TODOS los registros de ventas. Requiere token de seguridad."""
+    try:
+        # Verificar token de seguridad
+        token = request.args.get('token')
+        if not token or token != RESET_TOKEN:
+            print(f"Intento de reinicio no autorizado desde IP: {request.remote_addr}")
+            return jsonify({"error": "No autorizado. Token inválido."}), 403
+        
+        # Verificar que Firebase esté inicializado
+        if not cred:
+            return jsonify({"error": "Firebase no está configurado"}), 500
+        
+        ref = db.reference('ventas_granizados')
+        
+        # Obtener todas las ventas
+        datos = ref.get()
+        
+        if not datos:
+            return jsonify({
+                "status": "ok", 
+                "message": "No había datos para eliminar",
+                "eliminados": 0
+            }), 200
+        
+        # Contar cuántos registros se eliminarán
+        cantidad = len(datos)
+        
+        # Eliminar cada registro individualmente
+        for key in datos.keys():
+            ref.child(key).delete()
+        
+        print(f"✅ Datos reiniciados por {request.remote_addr} - {cantidad} registros eliminados")
+        
+        return jsonify({
+            "status": "ok", 
+            "message": f"Se eliminaron {cantidad} registros correctamente",
+            "eliminados": cantidad
+        }), 200
+        
+    except Exception as e:
+        print(f"Error en reset_data: {e}")
+        return jsonify({"error": f"Error interno: {str(e)}"}), 500
+
+
 @app.route('/export_csv')
 @rate_limit(max_requests=10, window=60)
 def export_csv():
@@ -238,5 +288,4 @@ def server_error(e):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(debug=True, host='0.0.0.0', port=port)
-
 
