@@ -32,15 +32,16 @@ else:
 
 # --- CONSTANTES DE NEGOCIO ---
 PRECIO_GRANIZADO = 5000
-COMISION_PORCENTAJE = 0.10
+COMISION_PORCENTAJE = 0.10  # 10% de comisión al empleado
 META_DIARIA = 103833
-CAPACIDAD_TANQUE = 12.0
-CONSUMO_POR_GRANIZADO = 0.25
+CAPACIDAD_TANQUE = 12.0  # litros
+CONSUMO_POR_GRANIZADO = 0.25  # litros por granizado
 
 # --- RATE LIMITING SIMPLE ---
 request_counts = {}
 
 def rate_limit(max_requests=30, window=60):
+    """Limita peticiones por IP: max_requests por ventana de segundos."""
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
@@ -56,20 +57,23 @@ def rate_limit(max_requests=30, window=60):
         return wrapper
     return decorator
 
+def no_cache(response):
+    """Agrega headers para evitar caché en el navegador."""
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    return response
+
 # --- RUTAS DEL DASHBOARD ---
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-def no_cache(response):
-    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-    response.headers['Pragma'] = 'no-cache'
-    return response
 
 @app.route('/get_data')
 @rate_limit(max_requests=60, window=60)
 def get_data():
+    """Retorna todas las ventas, opcionalmente filtradas por fecha."""
     try:
         ref = db.reference('ventas_granizados')
         datos = ref.get()
@@ -95,9 +99,11 @@ def get_data():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/get_stats')
 @rate_limit(max_requests=60, window=60)
 def get_stats():
+    """Retorna estadísticas agregadas. Acepta ?fecha=YYYY-MM-DD opcional."""
     try:
         ref = db.reference('ventas_granizados')
         datos = ref.get()
@@ -133,18 +139,20 @@ def get_stats():
             "comision_total": round(total_dia * COMISION_PORCENTAJE),
             "litros_consumidos": litros_consumidos,
             "litros_restantes": max(0, CAPACIDAD_TANQUE - litros_consumidos),
-            "porcentaje_meta": round((total_dia / META_DIARIA) * 100, 1) if META_DIARIA > 0 else 0
+            "porcentaje_meta": round((total_dia / META_DIARIA) * 100, 1)
         }))
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/update_data', methods=['POST', 'GET'])
 @rate_limit(max_requests=120, window=60)
 def update_data():
+    """Registra una nueva venta (desde cámara GeoVision u otro origen)."""
     try:
         precio = PRECIO_GRANIZADO
-        metodo = "GeoVision Automático"
+        metodo = "GeoVision Automatico"  # Se remueve la tilde para evitar problemas de encoding \u00e1
 
         if request.method == 'POST' and request.is_json:
             body = request.get_json(silent=True) or {}
@@ -155,21 +163,29 @@ def update_data():
 
         ref = db.reference('ventas_granizados')
         nueva_venta = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.utcnow().isoformat() + 'Z',
             "valor_venta": precio,
             "comision_empleado": comision,
             "metodo": metodo
         }
         ref.push(nueva_venta)
-        return jsonify({"status": "ok", "venta": nueva_venta}), 200
+        
+        # Forzar que Flask responda en formato UTF-8 nativo limpio
+        return Response(
+            json.dumps({"status": "ok", "venta": nueva_venta}, ensure_ascii=False),
+            mimetype='application/json',
+            status=200
+        )
 
     except Exception as e:
         print(f"Error en recepción: {e}")
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/export_csv')
 @rate_limit(max_requests=10, window=60)
 def export_csv():
+    """Exporta ventas a CSV descargable."""
     try:
         ref = db.reference('ventas_granizados')
         datos = ref.get()
@@ -207,49 +223,6 @@ def export_csv():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- NUEVO ENDPOINT: REINICIO COMPLETO ---
-@app.route('/reset_all', methods=['POST'])
-@rate_limit(max_requests=5, window=300)
-def reset_all():
-    """
-    Elimina TODOS los registros de ventas de Firebase.
-    Requiere confirmación explícita.
-    """
-    try:
-        body = request.get_json(silent=True) or {}
-        confirm = body.get('confirm', False)
-        
-        if not confirm:
-            return jsonify({
-                "error": "Se requiere confirmación explícita. Envía confirm: true"
-            }), 400
-        
-        ref = db.reference('ventas_granizados')
-        datos = ref.get()
-        
-        if not datos:
-            return jsonify({
-                "status": "ok",
-                "message": "La base de datos ya estaba vacía",
-                "registros_eliminados": 0
-            }), 200
-        
-        cantidad = len(datos)
-        
-        # Eliminar cada registro
-        for key in datos.keys():
-            ref.child(key).delete()
-        
-        return jsonify({
-            "status": "ok",
-            "message": f"Se eliminaron {cantidad} registros exitosamente",
-            "registros_eliminados": cantidad,
-            "timestamp": datetime.now().isoformat()
-        }), 200
-        
-    except Exception as e:
-        print(f"Error en reset_all: {e}")
-        return jsonify({"error": str(e)}), 500
 
 @app.errorhandler(429)
 def too_many_requests(e):
@@ -258,6 +231,7 @@ def too_many_requests(e):
 @app.errorhandler(500)
 def server_error(e):
     return jsonify({"error": "Error interno del servidor."}), 500
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
