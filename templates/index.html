@@ -126,6 +126,17 @@
         .btn-primary:hover { background: #00c988; transform: translateY(-1px); }
         .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
         .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+        
+        .btn-danger { 
+            background: transparent; 
+            border: 1px solid var(--danger); 
+            color: var(--danger); 
+        }
+        .btn-danger:hover { 
+            background: var(--danger); 
+            color: white; 
+            transform: translateY(-1px);
+        }
 
         .btn-venta {
             background: linear-gradient(135deg, #00e5a0, #00c8ff);
@@ -163,6 +174,8 @@
             z-index: 999;
         }
         .venta-toast.show { transform: translateY(0); opacity: 1; }
+        
+        .venta-toast.error { border-color: var(--danger); }
 
         main { padding: 0 32px 40px; }
 
@@ -379,6 +392,70 @@
             100% { background: transparent; }
         }
         .row-new td { animation: rowFlash 1.5s ease forwards; }
+        
+        /* Modal de confirmación */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--card-radius);
+            padding: 32px;
+            max-width: 400px;
+            text-align: center;
+            animation: fadeUp 0.3s ease;
+        }
+        
+        .modal-content h3 {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.5rem;
+            margin-bottom: 16px;
+        }
+        
+        .modal-content p {
+            color: var(--muted);
+            margin-bottom: 24px;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+        
+        .modal-buttons button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
+        .modal-confirm {
+            background: var(--danger);
+            color: white;
+        }
+        
+        .modal-cancel {
+            background: var(--surface2);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
     </style>
 </head>
 <body>
@@ -405,6 +482,20 @@
     <input type="date" id="fecha-filtro" class="date-input" title="Filtrar por fecha">
     <button class="btn btn-primary" onclick="aplicarFiltro()">⟳ Actualizar</button>
     <button class="btn btn-outline" onclick="exportarCSV()">↓ Exportar CSV</button>
+    <button class="btn btn-danger" onclick="mostrarModalReset()">⚠️ Reiniciar Datos</button>
+</div>
+
+<!-- Modal de confirmación -->
+<div id="modal-reset" class="modal">
+    <div class="modal-content">
+        <h3>⚠️ ADVERTENCIA</h3>
+        <p>Esta acción eliminará <strong>TODOS</strong> los registros de ventas de forma permanente. Esta operación no se puede deshacer.</p>
+        <p style="font-size: 0.85rem;">¿Estás completamente seguro?</p>
+        <div class="modal-buttons">
+            <button class="modal-cancel" onclick="cerrarModalReset()">Cancelar</button>
+            <button class="modal-confirm" onclick="reiniciarDatos()">Sí, reiniciar todo</button>
+        </div>
+    </div>
 </div>
 
 <!-- Toast notificación -->
@@ -638,7 +729,7 @@
         const porHora = {};
         ventas.forEach(v => {
             const ts = v.timestamp.endsWith('Z') ? v.timestamp : v.timestamp + 'Z';
-                const hora = new Date(ts).getHours();
+            const hora = new Date(ts).getHours();
             porHora[hora] = (porHora[hora] || 0) + 1;
         });
 
@@ -764,11 +855,58 @@
         }
     };
 
+    // --- Mostrar modal de confirmación ---
+    window.mostrarModalReset = function() {
+        document.getElementById('modal-reset').classList.add('active');
+    };
+    
+    window.cerrarModalReset = function() {
+        document.getElementById('modal-reset').classList.remove('active');
+    };
+    
+    // --- Reiniciar datos ---
+    window.reiniciarDatos = async function() {
+        cerrarModalReset();
+        
+        const toast = document.getElementById('venta-toast');
+        toast.innerHTML = '<span style="font-size:1.4rem;">⏳</span><span>Reiniciando datos...</span>';
+        toast.classList.add('show');
+        
+        try {
+            // Token de seguridad (debe coincidir con el del backend)
+            const RESET_TOKEN = "MiTokenSeguro2024!"; // CAMBIAR ESTE TOKEN
+            const res = await fetch(`/reset_data?token=${RESET_TOKEN}`, { 
+                method: 'POST',
+                cache: 'no-store'
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                mostrarToast('✅', data.message || '¡Datos reiniciados exitosamente!');
+                // Recargar los datos automáticamente
+                setTimeout(() => {
+                    aplicarFiltro();
+                }, 500);
+            } else if (res.status === 403) {
+                mostrarToast('❌', 'Token de seguridad inválido');
+            } else if (res.status === 429) {
+                mostrarToast('⚠️', 'Demasiadas solicitudes, espera un momento');
+            } else {
+                mostrarToast('❌', 'Error al reiniciar los datos');
+            }
+        } catch (e) {
+            console.error('Error:', e);
+            mostrarToast('❌', 'Error de conexión al servidor');
+        }
+    };
+
     function mostrarToast(icono, mensaje) {
         const toast = document.getElementById('venta-toast');
         toast.innerHTML = `<span style="font-size:1.4rem;">${icono}</span><span>${mensaje}</span>`;
+        toast.classList.remove('error');
+        if (icono === '❌') toast.classList.add('error');
         toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 2500);
+        setTimeout(() => toast.classList.remove('show'), 3000);
     }
 
     // --- Aplicar filtro de fecha ---
@@ -777,7 +915,7 @@
         escucharFecha(fecha);
     };
 
-    // --- Exportar CSV (sigue usando el backend) ---
+    // --- Exportar CSV ---
     window.exportarCSV = function() {
         const fecha = document.getElementById('fecha-filtro').value;
         window.location.href = `/export_csv${fecha ? '?fecha=' + fecha : ''}`;
@@ -785,6 +923,14 @@
 
     // --- Iniciar escucha ---
     escucharFecha(hoy);
+    
+    // Cerrar modal al hacer clic fuera
+    window.onclick = function(event) {
+        const modal = document.getElementById('modal-reset');
+        if (event.target === modal) {
+            cerrarModalReset();
+        }
+    };
 </script>
 </body>
 </html>
