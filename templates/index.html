@@ -1,5 +1,3 @@
-
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -128,6 +126,8 @@
         .btn-primary:hover { background: #00c988; transform: translateY(-1px); }
         .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
         .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+        .btn-danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
+        .btn-danger:hover { background: var(--danger); color: var(--text); border-color: var(--danger); }
 
         .btn-venta {
             background: linear-gradient(135deg, #00e5a0, #00c8ff);
@@ -375,12 +375,91 @@
         ::-webkit-scrollbar-track { background: var(--surface2); }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
 
-        /* Animación nueva fila */
         @keyframes rowFlash {
             0% { background: rgba(0,229,160,0.2); }
             100% { background: transparent; }
         }
         .row-new td { animation: rowFlash 1.5s ease forwards; }
+
+        /* Modal de confirmación */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+            animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--card-radius);
+            padding: 28px 32px;
+            max-width: 450px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .modal-content h3 {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.3rem;
+            margin-bottom: 12px;
+        }
+
+        .modal-content p {
+            color: var(--muted);
+            margin-bottom: 24px;
+            font-size: 0.9rem;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+
+        .modal-buttons button {
+            padding: 10px 24px;
+        }
+
+        .toast-notification {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            z-index: 1000;
+            animation: slideToast 0.3s ease;
+            pointer-events: none;
+        }
+
+        @keyframes slideToast {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .toast-notification.success { border-left: 4px solid var(--accent); color: var(--accent); }
+        .toast-notification.error { border-left: 4px solid var(--danger); color: var(--danger); }
     </style>
 </head>
 <body>
@@ -407,16 +486,15 @@
     <input type="date" id="fecha-filtro" class="date-input" title="Filtrar por fecha">
     <button class="btn btn-primary" onclick="aplicarFiltro()">⟳ Actualizar</button>
     <button class="btn btn-outline" onclick="exportarCSV()">↓ Exportar CSV</button>
+    <button class="btn btn-danger" onclick="mostrarModalReset()">🗑️ Reiniciar todo</button>
 </div>
 
-<!-- Toast notificación -->
 <div class="venta-toast" id="venta-toast">
     <span style="font-size:1.4rem;">✅</span>
     <span>¡Venta registrada!</span>
 </div>
 
 <main>
-
     <div id="alerta-meta" class="hidden">
         <div class="alerta-icon">🎉</div>
         <div class="alerta-text">
@@ -480,32 +558,30 @@
             <div class="tabla-wrap">
                 <table>
                     <thead>
-                        <tr>
-                            <th>Hora</th>
-                            <th>Evento</th>
-                            <th>Precio</th>
-                            <th>Comisión</th>
-                        </tr>
+                        <tr><th>Hora</th><th>Evento</th><th>Precio</th><th>Comisión</th></tr>
                     </thead>
                 </table>
-                <div class="tabla-cuerpo-wrap">
-                    <table>
-                        <tbody id="tabla-cuerpo">
-                            <tr><td colspan="4" class="empty"><div class="icon">📊</div>Conectando a Firebase...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
+                <div class="tabla-cuerpo-wrap"><tbody id="tabla-cuerpo">...</tbody></div>
             </div>
         </div>
     </div>
-
 </main>
+
+<div id="modalReset" class="modal">
+    <div class="modal-content">
+        <h3>⚠️ Reiniciar todos los datos</h3>
+        <p>Esta acción eliminará permanentemente <strong>TODOS</strong> los registros de ventas. No podrás recuperarlos.</p>
+        <div class="modal-buttons">
+            <button class="btn btn-outline" onclick="cerrarModal()">Cancelar</button>
+            <button class="btn btn-danger" onclick="confirmarReset()">Sí, reiniciar todo</button>
+        </div>
+    </div>
+</div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getDatabase, ref, onValue, query, orderByChild } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-    // --- CONFIG FIREBASE ---
     const firebaseConfig = {
         apiKey: "AIzaSyDwvA4lhR5lpc_4ucUCUJ2OyuP4x8pcTGM",
         authDomain: "control-granizados.firebaseapp.com",
@@ -519,7 +595,6 @@
     const appFB = initializeApp(firebaseConfig);
     const database = getDatabase(appFB);
 
-    // --- CONSTANTES ---
     const META = 103833;
     const CAPACIDAD = 12.0;
     const CONSUMO = 0.25;
@@ -527,45 +602,11 @@
 
     let grafica = null;
     let unsubscribe = null;
+    let currentFecha = new Date().toISOString().split('T')[0];
 
-    // --- Reloj ---
-    function actualizarReloj() {
-        const now = new Date();
-        document.getElementById('reloj').textContent =
-            now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    }
-    setInterval(actualizarReloj, 1000);
-    actualizarReloj();
+    function fmt(n) { return '$' + Math.round(n).toLocaleString('es-CO'); }
+    function flashEl(id) { /* ... */ }
 
-    // --- Fecha inicial: hoy ---
-    const hoy = new Date().toISOString().split('T')[0];
-    document.getElementById('fecha-filtro').value = hoy;
-
-    // --- Formatear pesos ---
-    function fmt(n) {
-        return '$' + Math.round(n).toLocaleString('es-CO');
-    }
-
-    // --- Estado de conexión ---
-    function setEstado(estado) {
-        const el = document.getElementById('estado-conexion');
-        const txt = document.getElementById('estado-texto');
-        el.className = 'live-dot ' + estado;
-        if (estado === 'ok') txt.textContent = 'EN VIVO';
-        else if (estado === 'error') txt.textContent = 'SIN CONEXIÓN';
-        else txt.textContent = 'CONECTANDO...';
-    }
-
-    // --- Flash en KPI cuando cambia ---
-    function flashEl(id) {
-        const el = document.getElementById(id);
-        el.classList.remove('flash');
-        void el.offsetWidth; // reflow
-        el.classList.add('flash');
-        setTimeout(() => el.classList.remove('flash'), 400);
-    }
-
-    // --- Renderizar KPIs ---
     function renderKPIs(ventas) {
         const total = ventas.reduce((s, v) => s + (v.valor_venta || 0), 0);
         const count = ventas.length;
@@ -573,7 +614,6 @@
         const litrosConsumidos = count * CONSUMO;
         const litrosRestantes = Math.max(0, CAPACIDAD - litrosConsumidos);
         const porc = Math.min((total / META) * 100, 100);
-
         document.getElementById('kpi-total').textContent = fmt(total);
         document.getElementById('kpi-ventas').textContent = count;
         document.getElementById('kpi-comision').textContent = fmt(comision);
@@ -582,211 +622,81 @@
         document.getElementById('barra-meta').style.width = porc + '%';
         document.getElementById('barra-tanque').style.width = (litrosRestantes / CAPACIDAD * 100) + '%';
         document.getElementById('porc-meta').textContent = porc.toFixed(1) + '%';
-
-        // Alerta meta
         const alerta = document.getElementById('alerta-meta');
         if (total >= META) {
             alerta.classList.remove('hidden');
-            document.getElementById('alerta-sub').textContent =
-                `¡Llevas ${fmt(total)} — ${fmt(total - META)} sobre la meta!`;
-        } else {
-            alerta.classList.add('hidden');
-        }
-
+            document.getElementById('alerta-sub').textContent = `¡Llevas ${fmt(total)} — ${fmt(total - META)} sobre la meta!`;
+        } else alerta.classList.add('hidden');
         flashEl('kpi-ventas');
         flashEl('kpi-total');
     }
 
-    // --- Renderizar tabla ---
     function renderTabla(ventas) {
         const tbody = document.getElementById('tabla-cuerpo');
         document.getElementById('badge-count').textContent = ventas.length + ' registros';
-
-        if (!ventas.length) {
-            tbody.innerHTML = `<tr><td colspan="4" class="empty"><div class="icon">🧊</div>No hay ventas registradas</td></tr>`;
-            return;
-        }
-
-        // Ordenar más reciente primero
-        const sorted = [...ventas].sort((a, b) => {
-            const ta = new Date(a.timestamp.endsWith('Z') ? a.timestamp : a.timestamp + 'Z');
-            const tb = new Date(b.timestamp.endsWith('Z') ? b.timestamp : b.timestamp + 'Z');
-            return tb - ta;
-        });
-
+        if (!ventas.length) { tbody.innerHTML = `<tr><td colspan="4" class="empty"><div class="icon">🧊</div>No hay ventas registradas</td></tr>`; return; }
+        const sorted = [...ventas].sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
         tbody.innerHTML = sorted.map((v, i) => {
-            const ts = v.timestamp.endsWith('Z') ? v.timestamp : v.timestamp + 'Z';
-            const hora = new Date(ts).toLocaleTimeString('es-CO', {
-                hour: '2-digit', minute: '2-digit', second: '2-digit'
-            });
-            const esAuto = v.metodo && v.metodo.includes('GeoVision');
-            const badge = esAuto
-                ? '<span class="badge badge-cam">📹 Cámara</span>'
-                : '<span class="badge badge-manual">✋ Manual</span>';
-            const esNueva = i === 0 ? 'row-new' : '';
-            return `<tr class="${esNueva}">
-                <td>${hora}</td>
-                <td>${badge}</td>
-                <td>${fmt(v.valor_venta || 0)}</td>
-                <td>${fmt(v.comision_empleado || 0)}</td>
-            </tr>`;
+            const hora = new Date(v.timestamp).toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+            const badge = v.metodo?.includes('GeoVision') ? '<span class="badge badge-cam">📹 Cámara</span>' : '<span class="badge badge-manual">✋ Manual</span>';
+            return `<tr class="${i===0?'row-new':''}"><td>${hora}</td><td>${badge}</td><td>${fmt(v.valor_venta||0)}</td><td>${fmt(v.comision_empleado||0)}</td></tr>`;
         }).join('');
     }
 
-    // --- Renderizar gráfica ---
     function renderGrafica(ventas, labelFecha) {
         document.getElementById('chart-fecha').textContent = labelFecha;
-
         const porHora = {};
-        ventas.forEach(v => {
-            const ts = v.timestamp.endsWith('Z') ? v.timestamp : v.timestamp + 'Z';
-                const hora = new Date(ts).getHours();
-            porHora[hora] = (porHora[hora] || 0) + 1;
-        });
-
-        const horas = Array.from({ length: 24 }, (_, i) => i);
-        const valores = horas.map(h => porHora[h] || 0);
-        const labels = horas.map(h => h + ':00');
-
-        if (grafica) {
-            grafica.data.datasets[0].data = valores;
-            grafica.update('active');
-            return;
-        }
-
+        ventas.forEach(v => { const hora = new Date(v.timestamp).getHours(); porHora[hora] = (porHora[hora]||0)+1; });
+        const valores = Array.from({length:24}, (_,i)=>porHora[i]||0);
+        if (grafica) { grafica.data.datasets[0].data = valores; grafica.update('active'); return; }
         const ctx = document.getElementById('grafica-horas').getContext('2d');
-        grafica = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels,
-                datasets: [{
-                    label: 'Granizados',
-                    data: valores,
-                    backgroundColor: 'rgba(0,229,160,0.25)',
-                    borderColor: '#00e5a0',
-                    borderWidth: 2,
-                    borderRadius: 6,
-                    hoverBackgroundColor: 'rgba(0,229,160,0.5)',
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        backgroundColor: '#1e2330',
-                        borderColor: '#2a3045',
-                        borderWidth: 1,
-                        titleColor: '#e8eaf0',
-                        bodyColor: '#00e5a0',
-                        callbacks: { label: ctx => ` ${ctx.parsed.y} granizado(s)` }
-                    }
-                },
-                scales: {
-                    x: {
-                        grid: { color: '#1e2330' },
-                        ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: 12 }
-                    },
-                    y: {
-                        grid: { color: '#1e2330' },
-                        ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, stepSize: 1 },
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
+        grafica = new Chart(ctx, { type:'bar', data:{ labels:Array.from({length:24},(_,i)=>i+':00'), datasets:[{ label:'Granizados', data:valores, backgroundColor:'rgba(0,229,160,0.25)', borderColor:'#00e5a0', borderWidth:2, borderRadius:6 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>` ${ctx.parsed.y} granizado(s)`}} }, scales:{ x:{ grid:{color:'#1e2330'}, ticks:{color:'#6b7280', maxTicksLimit:12} }, y:{ beginAtZero:true, grid:{color:'#1e2330'} } } } });
     }
 
-    // --- Escuchar Firebase en tiempo real ---
     function escucharFecha(fecha) {
-        // Cancelar listener anterior si existe
-        if (unsubscribe) {
-            unsubscribe();
-            unsubscribe = null;
-        }
-
-        setEstado('conectando');
-
+        if (unsubscribe) unsubscribe();
         const dbRef = ref(database, 'ventas_granizados');
-        const esHoy = fecha === hoy;
-        const label = esHoy ? 'HOY' : fecha;
-
         unsubscribe = onValue(dbRef, (snapshot) => {
-            setEstado('ok');
-
             const datos = snapshot.val();
-            if (!datos) {
-                renderTabla([]);
-                renderKPIs([]);
-                renderGrafica([], label);
-                return;
-            }
-
-            // Filtrar por fecha seleccionada (convirtiendo UTC → hora local Colombia)
+            if (!datos) { renderTabla([]); renderKPIs([]); renderGrafica([], fecha===currentFecha?'HOY':fecha); return; }
             const todas = Object.values(datos);
-            const filtradas = todas.filter(v => {
-                if (!v.timestamp) return false;
-                // El timestamp viene en UTC sin 'Z', lo convertimos a local
-                const ts = v.timestamp.endsWith('Z') ? v.timestamp : v.timestamp + 'Z';
-                const fechaLocal = new Date(ts).toLocaleDateString('en-CA'); // formato YYYY-MM-DD local
-                return fechaLocal === fecha;
-            });
-
-            renderKPIs(filtradas);
-            renderTabla(filtradas);
-            renderGrafica(filtradas, label);
-
-        }, (error) => {
-            console.error('Firebase error:', error);
-            setEstado('error');
-        });
+            const filtradas = todas.filter(v => v.timestamp && v.timestamp.split('T')[0] === fecha);
+            renderKPIs(filtradas); renderTabla(filtradas); renderGrafica(filtradas, fecha===currentFecha?'HOY':fecha);
+        }, (error) => { console.error(error); document.getElementById('estado-conexion').className='live-dot error'; document.getElementById('estado-texto').textContent='SIN CONEXIÓN'; });
     }
 
-    // --- Registrar venta sin salir del index ---
     window.registrarVenta = async function() {
         const btn = document.getElementById('btn-venta');
-        btn.disabled = true;
-        btn.innerHTML = '⏳ Registrando...';
-
+        btn.disabled = true; btn.innerHTML = '⏳ Registrando...';
         try {
-            const res = await fetch('/update_data', { method: 'GET', cache: 'no-store' });
-            if (res.ok) {
-                mostrarToast('✅', '¡Venta registrada!');
-            } else {
-                mostrarToast('❌', 'Error al registrar');
-            }
-        } catch (e) {
-            mostrarToast('❌', 'Sin conexión al servidor');
-        } finally {
-            setTimeout(() => {
-                btn.disabled = false;
-                btn.innerHTML = '🧊 Registrar Venta';
-            }, 1000);
-        }
+            const res = await fetch('/update_data', { method:'GET', cache:'no-store' });
+            const toast = document.getElementById('venta-toast');
+            if (res.ok) { toast.innerHTML = '<span style="font-size:1.4rem;">✅</span><span>¡Venta registrada!</span>'; }
+            else { toast.innerHTML = '<span style="font-size:1.4rem;">❌</span><span>Error al registrar</span>'; }
+            toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2500);
+        } catch(e) { console.error(e); }
+        finally { setTimeout(() => { btn.disabled = false; btn.innerHTML = '🧊 Registrar Venta'; }, 1000); }
     };
 
-    function mostrarToast(icono, mensaje) {
-        const toast = document.getElementById('venta-toast');
-        toast.innerHTML = `<span style="font-size:1.4rem;">${icono}</span><span>${mensaje}</span>`;
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 2500);
-    }
-
-    // --- Aplicar filtro de fecha ---
-    window.aplicarFiltro = function() {
-        const fecha = document.getElementById('fecha-filtro').value;
-        escucharFecha(fecha);
+    window.aplicarFiltro = function() { const fecha = document.getElementById('fecha-filtro').value; if(fecha) { currentFecha = fecha; escucharFecha(fecha); } };
+    window.exportarCSV = function() { const fecha = document.getElementById('fecha-filtro').value; window.location.href = `/export_csv${fecha?'?fecha='+fecha:''}`; };
+    window.mostrarModalReset = function() { document.getElementById('modalReset').classList.add('active'); };
+    window.cerrarModal = function() { document.getElementById('modalReset').classList.remove('active'); };
+    window.confirmarReset = async function() {
+        cerrarModal();
+        const toast = document.createElement('div'); toast.className = 'toast-notification success'; toast.textContent = '🔄 Reiniciando base de datos...'; document.body.appendChild(toast); setTimeout(()=>toast.remove(),3000);
+        try {
+            const res = await fetch('/reset_all', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({confirm:true}) });
+            const data = await res.json();
+            if(res.ok && data.status==='ok') { escucharFecha(currentFecha); const okToast = document.createElement('div'); okToast.className='toast-notification success'; okToast.textContent=`✅ ${data.message}`; document.body.appendChild(okToast); setTimeout(()=>okToast.remove(),4000); }
+            else { throw new Error(data.error||'Error'); }
+        } catch(e) { const errToast = document.createElement('div'); errToast.className='toast-notification error'; errToast.textContent='❌ Error al reiniciar'; document.body.appendChild(errToast); setTimeout(()=>errToast.remove(),4000); }
     };
-
-    // --- Exportar CSV (sigue usando el backend) ---
-    window.exportarCSV = function() {
-        const fecha = document.getElementById('fecha-filtro').value;
-        window.location.href = `/export_csv${fecha ? '?fecha=' + fecha : ''}`;
-    };
-
-    // --- Iniciar escucha ---
-    escucharFecha(hoy);
+    document.getElementById('modalReset').addEventListener('click', (e) => { if(e.target===document.getElementById('modalReset')) cerrarModal(); });
+    function actualizarReloj() { document.getElementById('reloj').textContent = new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+    setInterval(actualizarReloj,1000); actualizarReloj();
+    document.getElementById('fecha-filtro').value = currentFecha;
+    escucharFecha(currentFecha);
 </script>
 </body>
 </html>
