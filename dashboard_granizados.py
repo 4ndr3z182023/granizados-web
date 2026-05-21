@@ -1,792 +1,243 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Control Granizados</title>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <style>
-        :root {
-            --bg: #0d0f14;
-            --surface: #161921;
-            --surface2: #1e2330;
-            --border: #2a3045;
-            --accent: #00e5a0;
-            --accent2: #3b82f6;
-            --accent3: #f59e0b;
-            --danger: #ef4444;
-            --text: #e8eaf0;
-            --muted: #6b7280;
-            --card-radius: 16px;
+import os
+import json
+from datetime import datetime, date
+from functools import wraps
+from time import time
+from flask import Flask, render_template, jsonify, request, abort
+import firebase_admin
+from firebase_admin import credentials, db
+
+app = Flask(__name__)
+
+# --- CONFIGURACIÓN DE SEGURIDAD PARA FIREBASE ---
+firebase_json = os.environ.get('FIREBASE_JSON_DATA')
+
+if firebase_json:
+    key_dict = json.loads(firebase_json)
+    cred = credentials.Certificate(key_dict)
+else:
+    try:
+        cred = credentials.Certificate("llave.json")
+    except Exception as e:
+        print("Error: No se encontró llave.json ni variable de entorno.")
+        cred = None
+
+if cred:
+    if not firebase_admin._apps:
+        firebase_admin.initialize_app(cred, {
+            'databaseURL': 'https://control-granizados-default-rtdb.firebaseio.com/'
+        })
+else:
+    print("ALERTA: Firebase no se pudo inicializar.")
+
+# --- CONSTANTES DE NEGOCIO ---
+PRECIO_GRANIZADO = 5000
+COMISION_PORCENTAJE = 0.10  # 10% de comisión al empleado
+META_DIARIA = 103833
+CAPACIDAD_TANQUE = 12.0  # litros
+CONSUMO_POR_GRANIZADO = 0.25  # litros por granizado
+
+# --- RATE LIMITING SIMPLE ---
+request_counts = {}
+
+def rate_limit(max_requests=30, window=60):
+    """Limita peticiones por IP: max_requests por ventana de segundos."""
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            ip = request.remote_addr
+            now = time()
+            if ip not in request_counts:
+                request_counts[ip] = []
+            # Limpiar solicitudes viejas
+            request_counts[ip] = [t for t in request_counts[ip] if now - t < window]
+            if len(request_counts[ip]) >= max_requests:
+                abort(429)
+            request_counts[ip].append(now)
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
+# --- RUTAS DEL DASHBOARD ---
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+
+def no_cache(response):
+    """Agrega headers para evitar caché en el navegador."""
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    return response
+
+
+@app.route('/get_data')
+@rate_limit(max_requests=60, window=60)
+def get_data():
+    """Retorna todas las ventas, opcionalmente filtradas por fecha."""
+    try:
+        ref = db.reference('ventas_granizados')
+        datos = ref.get()
+        if not datos:
+            return no_cache(jsonify([]))
+
+        lista_ventas = [val for key, val in datos.items()]
+
+        # Filtro por fecha (parámetro opcional ?fecha=YYYY-MM-DD)
+        fecha_filtro = request.args.get('fecha')
+        if fecha_filtro:
+            try:
+                fecha_obj = datetime.strptime(fecha_filtro, '%Y-%m-%d').date()
+                lista_ventas = [
+                    v for v in lista_ventas
+                    if datetime.fromisoformat(v.get('timestamp', '')).date() == fecha_obj
+                ]
+            except ValueError:
+                return jsonify({"error": "Formato de fecha inválido. Use YYYY-MM-DD"}), 400
+
+        lista_ventas.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+        return no_cache(jsonify(lista_ventas))
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/get_stats')
+@rate_limit(max_requests=60, window=60)
+def get_stats():
+    """Retorna estadísticas agregadas. Acepta ?fecha=YYYY-MM-DD opcional."""
+    try:
+        ref = db.reference('ventas_granizados')
+        datos = ref.get()
+        if not datos:
+            return no_cache(jsonify({"por_hora": {}, "total_hoy": 0, "ventas_hoy": 0}))
+
+        # --- CORRECCIÓN: respetar el filtro de fecha enviado desde el frontend ---
+        fecha_filtro = request.args.get('fecha')
+        if fecha_filtro:
+            try:
+                dia = datetime.strptime(fecha_filtro, '%Y-%m-%d').date()
+            except ValueError:
+                return jsonify({"error": "Formato de fecha inválido. Use YYYY-MM-DD"}), 400
+        else:
+            dia = date.today()
+
+        ventas_dia = [
+            val for val in datos.values()
+            if datetime.fromisoformat(val.get('timestamp', '')).date() == dia
+        ]
+
+        por_hora = {}
+        for v in ventas_dia:
+            hora = datetime.fromisoformat(v['timestamp']).hour
+            por_hora[str(hora)] = por_hora.get(str(hora), 0) + 1
+
+        total_dia = sum(v.get('valor_venta', 0) for v in ventas_dia)
+        litros_consumidos = len(ventas_dia) * CONSUMO_POR_GRANIZADO
+
+        return no_cache(jsonify({
+            "por_hora": por_hora,
+            "total_hoy": total_dia,
+            "ventas_hoy": len(ventas_dia),
+            "comision_total": round(total_dia * COMISION_PORCENTAJE),
+            "litros_consumidos": litros_consumidos,
+            "litros_restantes": max(0, CAPACIDAD_TANQUE - litros_consumidos),
+            "porcentaje_meta": round((total_dia / META_DIARIA) * 100, 1)
+        }))
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/update_data', methods=['POST', 'GET'])
+@rate_limit(max_requests=120, window=60)
+def update_data():
+    """Registra una nueva venta (desde cámara GeoVision u otro origen)."""
+    try:
+        # Permitir precio personalizado si viene en el body
+        precio = PRECIO_GRANIZADO
+        metodo = "GeoVision Automático"
+
+        if request.method == 'POST' and request.is_json:
+            body = request.get_json(silent=True) or {}
+            precio = int(body.get('valor_venta', PRECIO_GRANIZADO))
+            metodo = body.get('metodo', metodo)
+
+        comision = round(precio * COMISION_PORCENTAJE)
+
+        ref = db.reference('ventas_granizados')
+        nueva_venta = {
+            "timestamp": datetime.utcnow().isoformat() + 'Z',
+            "valor_venta": precio,
+            "comision_empleado": comision,
+            "metodo": metodo
         }
+        ref.push(nueva_venta)
+        return jsonify({"status": "ok", "venta": nueva_venta}), 200
+
+    except Exception as e:
+        print(f"Error en recepción: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/export_csv')
+@rate_limit(max_requests=10, window=60)
+def export_csv():
+    """Exporta ventas a CSV descargable."""
+    try:
+        from flask import Response
+        ref = db.reference('ventas_granizados')
+        datos = ref.get()
+
+        fecha_filtro = request.args.get('fecha')
+        lista = list(datos.values()) if datos else []
+
+        if fecha_filtro:
+            try:
+                fecha_obj = datetime.strptime(fecha_filtro, '%Y-%m-%d').date()
+                lista = [
+                    v for v in lista
+                    if datetime.fromisoformat(v.get('timestamp', '')).date() == fecha_obj
+                ]
+            except ValueError:
+                pass
+
+        lista.sort(key=lambda x: x.get('timestamp', ''))
+
+        lines = ["Timestamp,Valor Venta,Comision Empleado,Metodo"]
+        for v in lista:
+            lines.append(
+                f"{v.get('timestamp','')},{v.get('valor_venta',0)},"
+                f"{v.get('comision_empleado',0)},{v.get('metodo','')}"
+            )
+
+        csv_content = "\n".join(lines)
+        filename = f"granizados_{fecha_filtro or date.today().isoformat()}.csv"
+        return Response(
+            csv_content,
+            mimetype='text/csv',
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# Manejo de errores HTTP
+@app.errorhandler(429)
+def too_many_requests(e):
+    return jsonify({"error": "Demasiadas solicitudes. Espera un momento."}), 429
+
+@app.errorhandler(500)
+def server_error(e):
+    return jsonify({"error": "Error interno del servidor."}), 500
+
+
+# --- INICIO DEL SERVIDOR ---
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8080))
+    app.run(debug=True, host='0.0.0.0', port=port)
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            background: var(--bg);
-            color: var(--text);
-            font-family: 'DM Sans', sans-serif;
-            min-height: 100vh;
-        }
-
-        header {
-            background: var(--surface);
-            border-bottom: 1px solid var(--border);
-            padding: 18px 32px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
-
-        .logo { display: flex; align-items: center; gap: 12px; }
-
-        .logo-icon {
-            width: 38px; height: 38px;
-            background: var(--accent);
-            border-radius: 10px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 20px;
-        }
-
-        .logo h1 {
-            font-family: 'Syne', sans-serif;
-            font-size: 1.2rem;
-            font-weight: 800;
-            letter-spacing: -0.02em;
-        }
-
-        .logo span { color: var(--accent); }
-
-        .header-right { display: flex; align-items: center; gap: 16px; }
-
-        .live-dot {
-            display: flex; align-items: center; gap: 8px;
-            font-size: 0.78rem;
-            font-family: 'DM Mono', monospace;
-            transition: color 0.3s;
-        }
-
-        .live-dot .dot {
-            width: 8px; height: 8px;
-            border-radius: 50%;
-            background: var(--accent);
-            animation: pulse 2s infinite;
-            transition: background 0.3s;
-        }
-
-        .live-dot.error .dot { background: var(--danger); animation: none; }
-        .live-dot.error { color: var(--danger); }
-        .live-dot.ok { color: var(--muted); }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(0.8); }
-        }
-
-        .controls {
-            padding: 20px 32px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-
-        .date-input {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 9px 14px;
-            border-radius: 10px;
-            font-family: 'DM Mono', monospace;
-            font-size: 0.85rem;
-            outline: none;
-            cursor: pointer;
-            transition: border-color 0.2s;
-        }
-
-        .date-input:focus { border-color: var(--accent); }
-
-        .btn {
-            padding: 9px 18px;
-            border-radius: 10px;
-            border: none;
-            font-family: 'DM Sans', sans-serif;
-            font-weight: 600;
-            font-size: 0.85rem;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex; align-items: center; gap: 6px;
-        }
-
-        .btn-primary { background: var(--accent); color: #0d0f14; }
-        .btn-primary:hover { background: #00c988; transform: translateY(-1px); }
-        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
-        .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
-
-        .btn-venta {
-            background: linear-gradient(135deg, #00e5a0, #00c8ff);
-            color: #0d0f14;
-            font-size: 1.1rem;
-            font-weight: 800;
-            padding: 14px 36px;
-            border-radius: 14px;
-            border: none;
-            cursor: pointer;
-            font-family: 'Syne', sans-serif;
-            letter-spacing: -0.01em;
-            box-shadow: 0 0 24px rgba(0,229,160,0.3);
-            transition: all 0.15s;
-            display: flex; align-items: center; gap: 10px;
-        }
-        .btn-venta:hover { transform: translateY(-2px); box-shadow: 0 0 36px rgba(0,229,160,0.5); }
-        .btn-venta:active { transform: scale(0.97); }
-        .btn-venta:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-        .venta-toast {
-            position: fixed;
-            bottom: 32px; right: 32px;
-            background: var(--surface);
-            border: 1px solid var(--accent);
-            border-radius: 14px;
-            padding: 16px 22px;
-            display: flex; align-items: center; gap: 12px;
-            font-size: 0.9rem;
-            font-weight: 600;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-            transform: translateY(100px);
-            opacity: 0;
-            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-            z-index: 999;
-        }
-        .venta-toast.show { transform: translateY(0); opacity: 1; }
-
-        main { padding: 0 32px 40px; }
-
-        .kpi-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .kpi-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--card-radius);
-            padding: 22px 24px;
-            position: relative;
-            overflow: hidden;
-            animation: fadeUp 0.5s ease both;
-        }
-
-        .kpi-card::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 3px;
-        }
-
-        .kpi-card.green::before { background: var(--accent); }
-        .kpi-card.blue::before { background: var(--accent2); }
-        .kpi-card.amber::before { background: var(--accent3); }
-
-        @keyframes fadeUp {
-            from { opacity: 0; transform: translateY(16px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .kpi-card:nth-child(2) { animation-delay: 0.08s; }
-        .kpi-card:nth-child(3) { animation-delay: 0.16s; }
-        .kpi-card:nth-child(4) { animation-delay: 0.24s; }
-
-        .kpi-label {
-            font-size: 0.75rem;
-            color: var(--muted);
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin-bottom: 10px;
-            font-weight: 600;
-        }
-
-        .kpi-value {
-            font-family: 'Syne', sans-serif;
-            font-size: 2rem;
-            font-weight: 800;
-            line-height: 1;
-            margin-bottom: 6px;
-            transition: all 0.4s ease;
-        }
-
-        .kpi-value.flash {
-            color: var(--accent);
-            transform: scale(1.05);
-        }
-
-        .kpi-sub {
-            font-size: 0.78rem;
-            color: var(--muted);
-            font-family: 'DM Mono', monospace;
-        }
-
-        .meta-card { grid-column: span 2; }
-
-        .progress-track {
-            background: var(--surface2);
-            border-radius: 999px;
-            height: 8px;
-            margin-top: 14px;
-            overflow: hidden;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, var(--accent), #00c8ff);
-            border-radius: 999px;
-            transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
-            width: 0%;
-        }
-
-        .progress-labels {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 8px;
-            font-size: 0.75rem;
-            color: var(--muted);
-            font-family: 'DM Mono', monospace;
-        }
-
-        .bottom-grid {
-            display: grid;
-            grid-template-columns: 1fr 2fr;
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        @media (max-width: 900px) {
-            .bottom-grid { grid-template-columns: 1fr; }
-            .meta-card { grid-column: span 1; }
-        }
-
-        .panel {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--card-radius);
-            padding: 24px;
-        }
-
-        .panel-title {
-            font-family: 'Syne', sans-serif;
-            font-size: 0.95rem;
-            font-weight: 700;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .panel-badge {
-            font-family: 'DM Mono', monospace;
-            font-size: 0.72rem;
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            padding: 3px 8px;
-            border-radius: 6px;
-            color: var(--muted);
-        }
-
-        .tabla-wrap { overflow-x: auto; }
-
-        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-
-        th {
-            text-align: left;
-            padding: 10px 14px;
-            font-size: 0.72rem;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: var(--muted);
-            font-weight: 600;
-            border-bottom: 1px solid var(--border);
-        }
-
-        td {
-            padding: 12px 14px;
-            border-bottom: 1px solid #1a1f2e;
-            font-family: 'DM Mono', monospace;
-            font-size: 0.82rem;
-        }
-
-        tr:hover td { background: var(--surface2); }
-        tr:last-child td { border-bottom: none; }
-
-        .badge {
-            display: inline-block;
-            padding: 3px 10px;
-            border-radius: 6px;
-            font-size: 0.72rem;
-            font-weight: 600;
-            font-family: 'DM Sans', sans-serif;
-        }
-
-        .badge-cam { background: rgba(0,229,160,0.15); color: var(--accent); }
-        .badge-manual { background: rgba(59,130,246,0.15); color: var(--accent2); }
-
-        #alerta-meta {
-            background: linear-gradient(135deg, #065f46, #047857);
-            border: 1px solid var(--accent);
-            border-radius: var(--card-radius);
-            padding: 18px 24px;
-            margin-bottom: 20px;
-            animation: slideIn 0.4s ease;
-            display: flex;
-            align-items: center;
-            gap: 14px;
-        }
-
-        #alerta-meta.hidden { display: none; }
-
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .alerta-icon { font-size: 1.8rem; }
-        .alerta-text h3 { font-family: 'Syne', sans-serif; font-size: 1rem; }
-        .alerta-text p { font-size: 0.82rem; color: rgba(255,255,255,0.7); margin-top: 2px; }
-
-        .empty {
-            text-align: center;
-            padding: 40px;
-            color: var(--muted);
-            font-size: 0.85rem;
-        }
-
-        .empty .icon { font-size: 2.5rem; margin-bottom: 10px; }
-
-        .tabla-cuerpo-wrap { max-height: 380px; overflow-y: auto; }
-
-        ::-webkit-scrollbar { width: 5px; height: 5px; }
-        ::-webkit-scrollbar-track { background: var(--surface2); }
-        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
-
-        /* Animación nueva fila */
-        @keyframes rowFlash {
-            0% { background: rgba(0,229,160,0.2); }
-            100% { background: transparent; }
-        }
-        .row-new td { animation: rowFlash 1.5s ease forwards; }
-    </style>
-</head>
-<body>
-
-<header>
-    <div class="logo">
-        <div class="logo-icon">🧊</div>
-        <h1>Bar <span>Granizados</span></h1>
-    </div>
-    <div class="header-right">
-        <div class="live-dot ok" id="estado-conexion">
-            <div class="dot"></div>
-            <span id="estado-texto">CONECTANDO...</span>
-        </div>
-        <span id="reloj" style="font-family:'DM Mono',monospace;font-size:0.8rem;color:var(--muted);"></span>
-    </div>
-</header>
-
-<div class="controls">
-    <button class="btn-venta" id="btn-venta" onclick="registrarVenta()">
-        🧊 Registrar Venta
-    </button>
-    <div style="width:1px;height:32px;background:var(--border);margin:0 4px;"></div>
-    <input type="date" id="fecha-filtro" class="date-input" title="Filtrar por fecha">
-    <button class="btn btn-primary" onclick="aplicarFiltro()">⟳ Actualizar</button>
-    <button class="btn btn-outline" onclick="exportarCSV()">↓ Exportar CSV</button>
-</div>
-
-<!-- Toast notificación -->
-<div class="venta-toast" id="venta-toast">
-    <span style="font-size:1.4rem;">✅</span>
-    <span>¡Venta registrada!</span>
-</div>
-
-<main>
-
-    <div id="alerta-meta" class="hidden">
-        <div class="alerta-icon">🎉</div>
-        <div class="alerta-text">
-            <h3>¡Meta diaria alcanzada!</h3>
-            <p id="alerta-sub">Has superado los $103,833 del objetivo de hoy.</p>
-        </div>
-    </div>
-
-    <div class="kpi-grid">
-        <div class="kpi-card green meta-card">
-            <div class="kpi-label">Progreso hacia la meta</div>
-            <div style="display:flex;align-items:baseline;gap:12px;">
-                <div class="kpi-value" id="kpi-total">$0</div>
-                <div class="kpi-sub">de $103,833</div>
-            </div>
-            <div class="progress-track">
-                <div class="progress-fill" id="barra-meta"></div>
-            </div>
-            <div class="progress-labels">
-                <span id="porc-meta">0%</span>
-                <span>Meta diaria</span>
-            </div>
-        </div>
-
-        <div class="kpi-card blue">
-            <div class="kpi-label">Ventas detectadas</div>
-            <div class="kpi-value" id="kpi-ventas">0</div>
-            <div class="kpi-sub">granizados hoy</div>
-        </div>
-
-        <div class="kpi-card amber">
-            <div class="kpi-label">Comisión empleado</div>
-            <div class="kpi-value" id="kpi-comision">$0</div>
-            <div class="kpi-sub">10% sobre ventas</div>
-        </div>
-
-        <div class="kpi-card" style="border-top:3px solid var(--accent);">
-            <div class="kpi-label">Tanque de mezcla</div>
-            <div class="kpi-value" id="kpi-litros">12.0 L</div>
-            <div class="kpi-sub" id="kpi-litros-sub">Sin consumo registrado</div>
-            <div class="progress-track" style="margin-top:12px;">
-                <div class="progress-fill" id="barra-tanque" style="background:linear-gradient(90deg,#3b82f6,#06b6d4);"></div>
-            </div>
-        </div>
-    </div>
-
-    <div class="bottom-grid">
-        <div class="panel">
-            <div class="panel-title">
-                Ventas por hora
-                <span class="panel-badge" id="chart-fecha">HOY</span>
-            </div>
-            <canvas id="grafica-horas" height="220"></canvas>
-        </div>
-
-        <div class="panel">
-            <div class="panel-title">
-                Registro de actividad
-                <span class="panel-badge" id="badge-count">0 registros</span>
-            </div>
-            <div class="tabla-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Hora</th>
-                            <th>Evento</th>
-                            <th>Precio</th>
-                            <th>Comisión</th>
-                        </tr>
-                    </thead>
-                </table>
-                <div class="tabla-cuerpo-wrap">
-                    <table>
-                        <tbody id="tabla-cuerpo">
-                            <tr><td colspan="4" class="empty"><div class="icon">📊</div>Conectando a Firebase...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-
-</main>
-
-<script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getDatabase, ref, onValue, query, orderByChild } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-
-    // --- CONFIG FIREBASE ---
-    const firebaseConfig = {
-        apiKey: "AIzaSyDwvA4lhR5lpc_4ucUCUJ2OyuP4x8pcTGM",
-        authDomain: "control-granizados.firebaseapp.com",
-        databaseURL: "https://control-granizados-default-rtdb.firebaseio.com",
-        projectId: "control-granizados",
-        storageBucket: "control-granizados.firebasestorage.app",
-        messagingSenderId: "755286383921",
-        appId: "1:755286383921:web:578f2f3a86767b21dbe410"
-    };
-
-    const appFB = initializeApp(firebaseConfig);
-    const database = getDatabase(appFB);
-
-    // --- CONSTANTES ---
-    const META = 103833;
-    const CAPACIDAD = 12.0;
-    const CONSUMO = 0.25;
-    const COMISION_PORC = 0.10;
-
-    let grafica = null;
-    let unsubscribe = null;
-
-    // --- Reloj ---
-    function actualizarReloj() {
-        const now = new Date();
-        document.getElementById('reloj').textContent =
-            now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    }
-    setInterval(actualizarReloj, 1000);
-    actualizarReloj();
-
-    // --- Fecha inicial: hoy ---
-    const hoy = new Date().toISOString().split('T')[0];
-    document.getElementById('fecha-filtro').value = hoy;
-
-    // --- Formatear pesos ---
-    function fmt(n) {
-        return '$' + Math.round(n).toLocaleString('es-CO');
-    }
-
-    // --- Estado de conexión ---
-    function setEstado(estado) {
-        const el = document.getElementById('estado-conexion');
-        const txt = document.getElementById('estado-texto');
-        el.className = 'live-dot ' + estado;
-        if (estado === 'ok') txt.textContent = 'EN VIVO';
-        else if (estado === 'error') txt.textContent = 'SIN CONEXIÓN';
-        else txt.textContent = 'CONECTANDO...';
-    }
-
-    // --- Flash en KPI cuando cambia ---
-    function flashEl(id) {
-        const el = document.getElementById(id);
-        el.classList.remove('flash');
-        void el.offsetWidth; // reflow
-        el.classList.add('flash');
-        setTimeout(() => el.classList.remove('flash'), 400);
-    }
-
-    // --- Renderizar KPIs ---
-    function renderKPIs(ventas) {
-        const total = ventas.reduce((s, v) => s + (v.valor_venta || 0), 0);
-        const count = ventas.length;
-        const comision = Math.round(total * COMISION_PORC);
-        const litrosConsumidos = count * CONSUMO;
-        const litrosRestantes = Math.max(0, CAPACIDAD - litrosConsumidos);
-        const porc = Math.min((total / META) * 100, 100);
-
-        document.getElementById('kpi-total').textContent = fmt(total);
-        document.getElementById('kpi-ventas').textContent = count;
-        document.getElementById('kpi-comision').textContent = fmt(comision);
-        document.getElementById('kpi-litros').textContent = litrosRestantes.toFixed(1) + ' L';
-        document.getElementById('kpi-litros-sub').textContent = litrosConsumidos.toFixed(2) + 'L consumidos';
-        document.getElementById('barra-meta').style.width = porc + '%';
-        document.getElementById('barra-tanque').style.width = (litrosRestantes / CAPACIDAD * 100) + '%';
-        document.getElementById('porc-meta').textContent = porc.toFixed(1) + '%';
-
-        // Alerta meta
-        const alerta = document.getElementById('alerta-meta');
-        if (total >= META) {
-            alerta.classList.remove('hidden');
-            document.getElementById('alerta-sub').textContent =
-                `¡Llevas ${fmt(total)} — ${fmt(total - META)} sobre la meta!`;
-        } else {
-            alerta.classList.add('hidden');
-        }
-
-        flashEl('kpi-ventas');
-        flashEl('kpi-total');
-    }
-
-    // --- Renderizar tabla ---
-    function renderTabla(ventas) {
-        const tbody = document.getElementById('tabla-cuerpo');
-        document.getElementById('badge-count').textContent = ventas.length + ' registros';
-
-        if (!ventas.length) {
-            tbody.innerHTML = `<tr><td colspan="4" class="empty"><div class="icon">🧊</div>No hay ventas registradas</td></tr>`;
-            return;
-        }
-
-        // Ordenar más reciente primero
-        const sorted = [...ventas].sort((a, b) => {
-            const ta = new Date(a.timestamp.endsWith('Z') ? a.timestamp : a.timestamp + 'Z');
-            const tb = new Date(b.timestamp.endsWith('Z') ? b.timestamp : b.timestamp + 'Z');
-            return tb - ta;
-        });
-
-        tbody.innerHTML = sorted.map((v, i) => {
-            const ts = v.timestamp.endsWith('Z') ? v.timestamp : v.timestamp + 'Z';
-            const hora = new Date(ts).toLocaleTimeString('es-CO', {
-                hour: '2-digit', minute: '2-digit', second: '2-digit'
-            });
-            const esAuto = v.metodo && v.metodo.includes('GeoVision');
-            const badge = esAuto
-                ? '<span class="badge badge-cam">📹 Cámara</span>'
-                : '<span class="badge badge-manual">✋ Manual</span>';
-            const esNueva = i === 0 ? 'row-new' : '';
-            return `<tr class="${esNueva}">
-                <td>${hora}</td>
-                <td>${badge}</td>
-                <td>${fmt(v.valor_venta || 0)}</td>
-                <td>${fmt(v.comision_empleado || 0)}</td>
-            </tr>`;
-        }).join('');
-    }
-
-    // --- Renderizar gráfica ---
-    function renderGrafica(ventas, labelFecha) {
-        document.getElementById('chart-fecha').textContent = labelFecha;
-
-        const porHora = {};
-        ventas.forEach(v => {
-            const ts = v.timestamp.endsWith('Z') ? v.timestamp : v.timestamp + 'Z';
-                const hora = new Date(ts).getHours();
-            porHora[hora] = (porHora[hora] || 0) + 1;
-        });
-
-        const horas = Array.from({ length: 24 }, (_, i) => i);
-        const valores = horas.map(h => porHora[h] || 0);
-        const labels = horas.map(h => h + ':00');
-
-        if (grafica) {
-            grafica.data.datasets[0].data = valores;
-            grafica.update('active');
-            return;
-        }
-
-        const ctx = document.getElementById('grafica-horas').getContext('2d');
-        grafica = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels,
-                datasets: [{
-                    label: 'Granizados',
-                    data: valores,
-                    backgroundColor: 'rgba(0,229,160,0.25)',
-                    borderColor: '#00e5a0',
-                    borderWidth: 2,
-                    borderRadius: 6,
-                    hoverBackgroundColor: 'rgba(0,229,160,0.5)',
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        backgroundColor: '#1e2330',
-                        borderColor: '#2a3045',
-                        borderWidth: 1,
-                        titleColor: '#e8eaf0',
-                        bodyColor: '#00e5a0',
-                        callbacks: { label: ctx => ` ${ctx.parsed.y} granizado(s)` }
-                    }
-                },
-                scales: {
-                    x: {
-                        grid: { color: '#1e2330' },
-                        ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, maxTicksLimit: 12 }
-                    },
-                    y: {
-                        grid: { color: '#1e2330' },
-                        ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 }, stepSize: 1 },
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
-    }
-
-    // --- Escuchar Firebase en tiempo real ---
-    function escucharFecha(fecha) {
-        // Cancelar listener anterior si existe
-        if (unsubscribe) {
-            unsubscribe();
-            unsubscribe = null;
-        }
-
-        setEstado('conectando');
-
-        const dbRef = ref(database, 'ventas_granizados');
-        const esHoy = fecha === hoy;
-        const label = esHoy ? 'HOY' : fecha;
-
-        unsubscribe = onValue(dbRef, (snapshot) => {
-            setEstado('ok');
-
-            const datos = snapshot.val();
-            if (!datos) {
-                renderTabla([]);
-                renderKPIs([]);
-                renderGrafica([], label);
-                return;
-            }
-
-            // Filtrar por fecha seleccionada (convirtiendo UTC → hora local Colombia)
-            const todas = Object.values(datos);
-            const filtradas = todas.filter(v => {
-                if (!v.timestamp) return false;
-                // El timestamp viene en UTC sin 'Z', lo convertimos a local
-                const ts = v.timestamp.endsWith('Z') ? v.timestamp : v.timestamp + 'Z';
-                const fechaLocal = new Date(ts).toLocaleDateString('en-CA'); // formato YYYY-MM-DD local
-                return fechaLocal === fecha;
-            });
-
-            renderKPIs(filtradas);
-            renderTabla(filtradas);
-            renderGrafica(filtradas, label);
-
-        }, (error) => {
-            console.error('Firebase error:', error);
-            setEstado('error');
-        });
-    }
-
-    // --- Registrar venta sin salir del index ---
-    window.registrarVenta = async function() {
-        const btn = document.getElementById('btn-venta');
-        btn.disabled = true;
-        btn.innerHTML = '⏳ Registrando...';
-
-        try {
-            const res = await fetch('/update_data', { method: 'GET', cache: 'no-store' });
-            if (res.ok) {
-                mostrarToast('✅', '¡Venta registrada!');
-            } else {
-                mostrarToast('❌', 'Error al registrar');
-            }
-        } catch (e) {
-            mostrarToast('❌', 'Sin conexión al servidor');
-        } finally {
-            setTimeout(() => {
-                btn.disabled = false;
-                btn.innerHTML = '🧊 Registrar Venta';
-            }, 1000);
-        }
-    };
-
-    function mostrarToast(icono, mensaje) {
-        const toast = document.getElementById('venta-toast');
-        toast.innerHTML = `<span style="font-size:1.4rem;">${icono}</span><span>${mensaje}</span>`;
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 2500);
-    }
-
-    // --- Aplicar filtro de fecha ---
-    window.aplicarFiltro = function() {
-        const fecha = document.getElementById('fecha-filtro').value;
-        escucharFecha(fecha);
-    };
-
-    // --- Exportar CSV (sigue usando el backend) ---
-    window.exportarCSV = function() {
-        const fecha = document.getElementById('fecha-filtro').value;
-        window.location.href = `/export_csv${fecha ? '?fecha=' + fecha : ''}`;
-    };
-
-    // --- Iniciar escucha ---
-    escucharFecha(hoy);
-</script>
-</body>
-</html>
 
 
