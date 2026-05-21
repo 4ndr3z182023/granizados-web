@@ -373,6 +373,7 @@
         ::-webkit-scrollbar-track { background: var(--surface2); }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
 
+        /* Animación nueva fila */
         @keyframes rowFlash {
             0% { background: rgba(0,229,160,0.2); }
             100% { background: transparent; }
@@ -406,12 +407,14 @@
     <button class="btn btn-outline" onclick="exportarCSV()">↓ Exportar CSV</button>
 </div>
 
+<!-- Toast notificación -->
 <div class="venta-toast" id="venta-toast">
     <span style="font-size:1.4rem;">✅</span>
     <span>¡Venta registrada!</span>
 </div>
 
 <main>
+
     <div id="alerta-meta" class="hidden">
         <div class="alerta-icon">🎉</div>
         <div class="alerta-text">
@@ -493,11 +496,12 @@
             </div>
         </div>
     </div>
+
 </main>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    import { getDatabase, ref, onValue, query, orderByChild } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
     // --- CONFIG FIREBASE ---
     const firebaseConfig = {
@@ -513,6 +517,7 @@
     const appFB = initializeApp(firebaseConfig);
     const database = getDatabase(appFB);
 
+    // --- CONSTANTES ---
     const META = 103833;
     const CAPACIDAD = 12.0;
     const CONSUMO = 0.25;
@@ -521,6 +526,7 @@
     let grafica = null;
     let unsubscribe = null;
 
+    // --- Reloj ---
     function actualizarReloj() {
         const now = new Date();
         document.getElementById('reloj').textContent =
@@ -529,16 +535,16 @@
     setInterval(actualizarReloj, 1000);
     actualizarReloj();
 
-    // Obtener fecha de hoy en formato local YYYY-MM-DD ajustado a la zona horaria de Colombia
-    const d = new Date();
-    const offset = d.getTimezoneOffset();
-    const fechaLocalCO = new Date(d.getTime() - (offset * 60 * 1000)).toISOString().split('T')[0];
-    document.getElementById('fecha-filtro').value = fechaLocalCO;
+    // --- Fecha inicial: hoy ---
+    const hoy = new Date().toISOString().split('T')[0];
+    document.getElementById('fecha-filtro').value = hoy;
 
+    // --- Formatear pesos ---
     function fmt(n) {
         return '$' + Math.round(n).toLocaleString('es-CO');
     }
 
+    // --- Estado de conexión ---
     function setEstado(estado) {
         const el = document.getElementById('estado-conexion');
         const txt = document.getElementById('estado-texto');
@@ -548,14 +554,16 @@
         else txt.textContent = 'CONECTANDO...';
     }
 
+    // --- Flash en KPI cuando cambia ---
     function flashEl(id) {
         const el = document.getElementById(id);
         el.classList.remove('flash');
-        void el.offsetWidth;
+        void el.offsetWidth; // reflow
         el.classList.add('flash');
         setTimeout(() => el.classList.remove('flash'), 400);
     }
 
+    // --- Renderizar KPIs ---
     function renderKPIs(ventas) {
         const total = ventas.reduce((s, v) => s + (v.valor_venta || 0), 0);
         const count = ventas.length;
@@ -573,6 +581,7 @@
         document.getElementById('barra-tanque').style.width = (litrosRestantes / CAPACIDAD * 100) + '%';
         document.getElementById('porc-meta').textContent = porc.toFixed(1) + '%';
 
+        // Alerta meta
         const alerta = document.getElementById('alerta-meta');
         if (total >= META) {
             alerta.classList.remove('hidden');
@@ -586,6 +595,7 @@
         flashEl('kpi-total');
     }
 
+    // --- Renderizar tabla ---
     function renderTabla(ventas) {
         const tbody = document.getElementById('tabla-cuerpo');
         document.getElementById('badge-count').textContent = ventas.length + ' registros';
@@ -595,25 +605,23 @@
             return;
         }
 
+        // Ordenar más reciente primero
         const sorted = [...ventas].sort((a, b) => {
-            return new Date(b.timestamp.replace('Z', '')) - new Date(a.timestamp.replace('Z', ''));
+            const ta = new Date(a.timestamp.endsWith('Z') ? a.timestamp : a.timestamp + 'Z');
+            const tb = new Date(b.timestamp.endsWith('Z') ? b.timestamp : b.timestamp + 'Z');
+            return tb - ta;
         });
 
         tbody.innerHTML = sorted.map((v, i) => {
-            if (!v.timestamp) return '';
-            
-            const tsLimpio = v.timestamp.replace('Z', '');
-            // Forzar interpretación nativa sin desfase UTC
-            const hora = new Date(tsLimpio).toLocaleTimeString('es-CO', {
-                hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+            const ts = v.timestamp.endsWith('Z') ? v.timestamp : v.timestamp + 'Z';
+            const hora = new Date(ts).toLocaleTimeString('es-CO', {
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
             });
-            
             const esAuto = v.metodo && v.metodo.includes('GeoVision');
             const badge = esAuto
                 ? '<span class="badge badge-cam">📹 Cámara</span>'
                 : '<span class="badge badge-manual">✋ Manual</span>';
             const esNueva = i === 0 ? 'row-new' : '';
-            
             return `<tr class="${esNueva}">
                 <td>${hora}</td>
                 <td>${badge}</td>
@@ -623,13 +631,14 @@
         }).join('');
     }
 
+    // --- Renderizar gráfica ---
     function renderGrafica(ventas, labelFecha) {
         document.getElementById('chart-fecha').textContent = labelFecha;
 
         const porHora = {};
         ventas.forEach(v => {
-            if (!v.timestamp) return;
-            const hora = new Date(v.timestamp.replace('Z', '')).getHours();
+            const ts = v.timestamp.endsWith('Z') ? v.timestamp : v.timestamp + 'Z';
+                const hora = new Date(ts).getHours();
             porHora[hora] = (porHora[hora] || 0) + 1;
         });
 
@@ -687,7 +696,9 @@
         });
     }
 
+    // --- Escuchar Firebase en tiempo real ---
     function escucharFecha(fecha) {
+        // Cancelar listener anterior si existe
         if (unsubscribe) {
             unsubscribe();
             unsubscribe = null;
@@ -696,7 +707,7 @@
         setEstado('conectando');
 
         const dbRef = ref(database, 'ventas_granizados');
-        const esHoy = fecha === fechaLocalCO;
+        const esHoy = fecha === hoy;
         const label = esHoy ? 'HOY' : fecha;
 
         unsubscribe = onValue(dbRef, (snapshot) => {
@@ -710,11 +721,14 @@
                 return;
             }
 
+            // Filtrar por fecha seleccionada (convirtiendo UTC → hora local Colombia)
             const todas = Object.values(datos);
             const filtradas = todas.filter(v => {
                 if (!v.timestamp) return false;
-                const fechaRegistro = v.timestamp.split('T')[0];
-                return fechaRegistro === fecha;
+                // El timestamp viene en UTC sin 'Z', lo convertimos a local
+                const ts = v.timestamp.endsWith('Z') ? v.timestamp : v.timestamp + 'Z';
+                const fechaLocal = new Date(ts).toLocaleDateString('en-CA'); // formato YYYY-MM-DD local
+                return fechaLocal === fecha;
             });
 
             renderKPIs(filtradas);
@@ -727,6 +741,7 @@
         });
     }
 
+    // --- Registrar venta sin salir del index ---
     window.registrarVenta = async function() {
         const btn = document.getElementById('btn-venta');
         btn.disabled = true;
@@ -756,17 +771,21 @@
         setTimeout(() => toast.classList.remove('show'), 2500);
     }
 
+    // --- Aplicar filtro de fecha ---
     window.aplicarFiltro = function() {
         const fecha = document.getElementById('fecha-filtro').value;
         escucharFecha(fecha);
     };
 
+    // --- Exportar CSV (sigue usando el backend) ---
     window.exportarCSV = function() {
         const fecha = document.getElementById('fecha-filtro').value;
         window.location.href = `/export_csv${fecha ? '?fecha=' + fecha : ''}`;
     };
 
-    escucharFecha(fechaLocalCO);
+    // --- Iniciar escucha ---
+    escucharFecha(hoy);
 </script>
 </body>
 </html>
+
