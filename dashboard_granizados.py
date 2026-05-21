@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from functools import wraps
 from time import time
 from flask import Flask, render_template, jsonify, request, abort, Response
@@ -41,7 +41,6 @@ CONSUMO_POR_GRANIZADO = 0.25  # litros por granizado
 request_counts = {}
 
 def rate_limit(max_requests=30, window=60):
-    """Limita peticiones por IP: max_requests por ventana de segundos."""
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
@@ -58,10 +57,15 @@ def rate_limit(max_requests=30, window=60):
     return decorator
 
 def no_cache(response):
-    """Agrega headers para evitar caché en el navegador."""
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     response.headers['Pragma'] = 'no-cache'
     return response
+
+def obtener_hora_colombia():
+    """Retorna la fecha y hora actual en Colombia (UTC-5) libre de microsegundos."""
+    utc_now = datetime.utcnow()
+    colombia_now = utc_now - timedelta(hours=5)
+    return colombia_now.replace(microsecond=0)
 
 # --- RUTAS DEL DASHBOARD ---
 
@@ -73,7 +77,6 @@ def index():
 @app.route('/get_data')
 @rate_limit(max_requests=60, window=60)
 def get_data():
-    """Retorna todas las ventas, opcionalmente filtradas por fecha."""
     try:
         ref = db.reference('ventas_granizados')
         datos = ref.get()
@@ -103,7 +106,6 @@ def get_data():
 @app.route('/get_stats')
 @rate_limit(max_requests=60, window=60)
 def get_stats():
-    """Retorna estadísticas agregadas. Acepta ?fecha=YYYY-MM-DD opcional."""
     try:
         ref = db.reference('ventas_granizados')
         datos = ref.get()
@@ -117,11 +119,11 @@ def get_stats():
             except ValueError:
                 return jsonify({"error": "Formato de fecha inválido. Use YYYY-MM-DD"}), 400
         else:
-            dia = date.today()
+            dia = (datetime.utcnow() - timedelta(hours=5)).date()
 
         ventas_dia = [
             val for val in datos.values()
-            if datetime.fromisoformat(val.get('timestamp', '').replace('Z', '')).date() == dia
+            if val.get('timestamp') and datetime.fromisoformat(val['timestamp'].replace('Z', '')).date() == dia
         ]
 
         por_hora = {}
@@ -149,10 +151,9 @@ def get_stats():
 @app.route('/update_data', methods=['POST', 'GET'])
 @rate_limit(max_requests=120, window=60)
 def update_data():
-    """Registra una nueva venta (desde cámara GeoVision u otro origen)."""
     try:
         precio = PRECIO_GRANIZADO
-        metodo = "GeoVision Automatico"  # Se remueve la tilde para evitar problemas de encoding \u00e1
+        metodo = "GeoVision Automatico"
 
         if request.method == 'POST' and request.is_json:
             body = request.get_json(silent=True) or {}
@@ -163,14 +164,13 @@ def update_data():
 
         ref = db.reference('ventas_granizados')
         nueva_venta = {
-            "timestamp": datetime.utcnow().isoformat() + 'Z',
+            "timestamp": obtener_hora_colombia().isoformat(),
             "valor_venta": precio,
             "comision_empleado": comision,
             "metodo": metodo
         }
         ref.push(nueva_venta)
         
-        # Forzar que Flask responda en formato UTF-8 nativo limpio
         return Response(
             json.dumps({"status": "ok", "venta": nueva_venta}, ensure_ascii=False),
             mimetype='application/json',
@@ -185,7 +185,6 @@ def update_data():
 @app.route('/export_csv')
 @rate_limit(max_requests=10, window=60)
 def export_csv():
-    """Exporta ventas a CSV descargable."""
     try:
         ref = db.reference('ventas_granizados')
         datos = ref.get()
@@ -198,7 +197,7 @@ def export_csv():
                 fecha_obj = datetime.strptime(fecha_filtro, '%Y-%m-%d').date()
                 lista = [
                     v for v in lista
-                    if datetime.fromisoformat(v.get('timestamp', '').replace('Z', '')).date() == fecha_obj
+                    if v.get('timestamp') and datetime.fromisoformat(v['timestamp'].replace('Z', '')).date() == fecha_obj
                 ]
             except ValueError:
                 pass
@@ -236,6 +235,5 @@ def server_error(e):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(debug=True, host='0.0.0.0', port=port)
-
 
 
