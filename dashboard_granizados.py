@@ -1,291 +1,160 @@
 import os
 import json
-from datetime import datetime, date
-from functools import wraps
-from time import time
-from flask import Flask, render_template, jsonify, request, abort
+import time
+import cv2
+import numpy as np
+import threading
+from datetime import datetime
+import pytz
+from flask import Flask, render_template, jsonify, request, Response
 import firebase_admin
 from firebase_admin import credentials, db
 
 app = Flask(__name__)
 
-# --- TOKEN DE SEGURIDAD PARA REINICIO ---
-# ¡CAMBIAR ESTE TOKEN POR UNO SEGURO!
-RESET_TOKEN = "MiTokenSeguro2024!"  # Cambia esto por un token único y seguro
-
-# --- CONFIGURACIÓN DE SEGURIDAD PARA FIREBASE ---
-firebase_json = os.environ.get('FIREBASE_JSON_DATA')
-
-if firebase_json:
-    key_dict = json.loads(firebase_json)
-    cred = credentials.Certificate(key_dict)
-else:
-    try:
-        cred = credentials.Certificate("llave.json")
-    except Exception as e:
-        print("Error: No se encontró llave.json ni variable de entorno.")
-        cred = None
-
-if cred:
-    if not firebase_admin._apps:
-        firebase_admin.initialize_app(cred, {
-            'databaseURL': 'https://control-granizados-default-rtdb.firebaseio.com/'
-        })
-else:
-    print("ALERTA: Firebase no se pudo inicializar.")
-
-# --- CONSTANTES DE NEGOCIO ---
+# --- CONFIGURACIÓN DE PARÁMETROS DEL NEGOCIO ---
 PRECIO_GRANIZADO = 5000
-COMISION_PORCENTAJE = 0.10  # 10% de comisión al empleado
-META_DIARIA = 103833
-CAPACIDAD_TANQUE = 12.0  # litros
-CONSUMO_POR_GRANIZADO = 0.25  # litros por granizado
+COMISION_PORCENTAJE = 0.10  # 10% de comisión para el empleado
 
-# --- RATE LIMITING SIMPLE ---
-request_counts = {}
+# --- CONFIGURACIÓN DE LA CÁMARA GEOVISION ---
+# Recuerda cambiar 'TU_CONTRASEÑA_REAL' por la clave de tu cámara
+RTSP_URL = "rtsp://admin:TU_CONTRASEÑA_REAL@10.1.30.210:554/ch01/0"
 
-def rate_limit(max_requests=30, window=60):
-    """Limita peticiones por IP: max_requests por ventana de segundos."""
-    def decorator(f):
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            ip = request.remote_addr
-            now = time()
-            if ip not in request_counts:
-                request_counts[ip] = []
-            # Limpiar solicitudes viejas
-            request_counts[ip] = [t for t in request_counts[ip] if now - t < window]
-            if len(request_counts[ip]) >= max_requests:
-                abort(429)
-            request_counts[ip].append(now)
-            return f(*args, **kwargs)
-        return wrapper
-    return decorator
+# --- INITIALIZAR FIREBASE ---
+try:
+    cred = credentials.Certificate('serviceAccountKey.json')
+    firebase_admin.initialize_app(cred, {
+        'databaseURL': 'https://granizados-web-default-rtdb.firebaseio.com/'
+    })
+    print("Conexión exitosa con Firebase Realtime Database.")
+except Exception as e:
+    print(f"Error al conectar con Firebase: {e}")
 
-# --- RUTAS DEL DASHBOARD ---
+# --- FUNCIÓN DE HORA LOCAL COLOMBIA ---
+def obtener_hora_colombia():
+    zona_co = pytz.timezone('America/Bogota')
+    return datetime.now(zona_co)
+
+# --- PROCESO EN SEGUNDO PLANO: ANÁLISIS DE VIDEO (OpenCV Calibrado) ---
+def monitorear_camara_granizados():
+    print("Iniciando hilos y conexión con la cámara GeoVision...")
+    cap = cv2.VideoCapture(RTSP_URL)
+    
+    # Subtractor de fondo para detectar objetos en movimiento
+    fgbg = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=50, detectShadows=False)
+    bloqueo_conteo = False 
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            print("Pérdida de señal RTSP con la cámara. Reintentando en 10 segundos...")
+            time.sleep(10)
+            cap = cv2.VideoCapture(RTSP_URL)
+            continue
+
+        # Redimensionar el cuadro a 640x480 para procesar rápido en Render sin saturar memoria
+        frame_pequeno = cv2.resize(frame, (640, 480))
+        gray = cv2.cvtColor(frame_pequeno, cv2.COLOR_BGR2GRAY)
+        fgmask = fgbg.apply(gray)
+        
+        # Umbralización para limpiar el ruido del movimiento
+        _, thresh = cv2.threshold(fgmask, 200, 255, cv2.THRESH_BINARY)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        movimiento_detectado = False
+        for contour in contours:
+            # Filtro por tamaño: Subimos a 1800 para ignorar cambios de luz del techo o moscas
+            if cv2.contourArea(contour) < 1800: 
+                continue
+            
+            (x, y, w, h) = cv2.boundingRect(contour)
+            centro_x = x + int(w / 2)
+            centro_y = y + int(h / 2)
+            
+            # --- CUADRANTE DE DETECCIÓN CALIBRADO ---
+            # Evaluamos el movimiento únicamente en la zona inferior derecha del video (zona del mostrador)
+            # Mitad derecha: centro_x > 320 | Parte baja: centro_y > 300
+            if centro_x > 320 and centro_y > 300: 
+                movimiento_detectado = True
+                break
+
+        # Disparar evento automático hacia Firebase
+        if movimiento_detectado and not bloqueo_conteo:
+            print("¡Objeto detectado en el mostrador! Registrando venta automática...")
+            try:
+                precio = PRECIO_GRANIZADO
+                comision = round(precio * COMISION_PORCENTAJE)
+                
+                ref = db.reference('ventas_granizados')
+                nueva_venta = {
+                    "timestamp": obtener_hora_colombia().isoformat(),
+                    "valor_venta": precio,
+                    "comision_empleado": comision,
+                    "metodo": "GeoVision Automatico"
+                }
+                ref.push(nueva_venta)
+                print("¡Granizado sumado automáticamente a Firebase!")
+            except Exception as e:
+                print(f"Error registrando en Firebase: {e}")
+
+            bloqueo_conteo = True 
+            time.sleep(3) # Bloqueo de seguridad de 3 segundos para evitar doble conteo del mismo vaso
+
+        if not movimiento_detectado:
+            bloqueo_conteo = False 
+
+        time.sleep(0.1) # Pausa de estabilidad
+
+# Iniciar el análisis de la cámara en un hilo paralelo invisible
+threading.Thread(target=monitorear_camara_granizados, daemon=True).start()
+
+
+# --- RUTAS DE FLASK (SERVIDOR WEB) ---
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-
-def no_cache(response):
-    """Agrega headers para evitar caché en el navegador."""
-    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-    response.headers['Pragma'] = 'no-cache'
-    return response
-
-
-@app.route('/get_data')
-@rate_limit(max_requests=60, window=60)
+@app.route('/get_data', methods=['GET'])
 def get_data():
-    """Retorna todas las ventas, opcionalmente filtradas por fecha."""
+    """Ruta interna para que el HTML consulte los datos desde Render sin bloqueos CORS"""
     try:
         ref = db.reference('ventas_granizados')
-        datos = ref.get()
-        if not datos:
-            return no_cache(jsonify([]))
-
-        lista_ventas = [val for key, val in datos.items()]
-
-        # Filtro por fecha (parámetro opcional ?fecha=YYYY-MM-DD)
-        fecha_filtro = request.args.get('fecha')
-        if fecha_filtro:
-            try:
-                fecha_obj = datetime.strptime(fecha_filtro, '%Y-%m-%d').date()
-                lista_ventas = [
-                    v for v in lista_ventas
-                    if datetime.fromisoformat(v.get('timestamp', '')).date() == fecha_obj
-                ]
-            except ValueError:
-                return jsonify({"error": "Formato de fecha inválido. Use YYYY-MM-DD"}), 400
-
-        lista_ventas.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
-        return no_cache(jsonify(lista_ventas))
-
+        ventas_data = ref.get() or {}
+        
+        lista_ventas = []
+        for key, val in ventas_data.items():
+            lista_ventas.append(val)
+            
+        return jsonify({"status": "success", "ventas": lista_ventas})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/get_stats')
-@rate_limit(max_requests=60, window=60)
-def get_stats():
-    """Retorna estadísticas agregadas. Acepta ?fecha=YYYY-MM-DD opcional."""
-    try:
-        ref = db.reference('ventas_granizados')
-        datos = ref.get()
-        if not datos:
-            return no_cache(jsonify({"por_hora": {}, "total_hoy": 0, "ventas_hoy": 0}))
-
-        fecha_filtro = request.args.get('fecha')
-        if fecha_filtro:
-            try:
-                dia = datetime.strptime(fecha_filtro, '%Y-%m-%d').date()
-            except ValueError:
-                return jsonify({"error": "Formato de fecha inválido. Use YYYY-MM-DD"}), 400
-        else:
-            dia = date.today()
-
-        ventas_dia = [
-            val for val in datos.values()
-            if datetime.fromisoformat(val.get('timestamp', '')).date() == dia
-        ]
-
-        por_hora = {}
-        for v in ventas_dia:
-            hora = datetime.fromisoformat(v['timestamp']).hour
-            por_hora[str(hora)] = por_hora.get(str(hora), 0) + 1
-
-        total_dia = sum(v.get('valor_venta', 0) for v in ventas_dia)
-        litros_consumidos = len(ventas_dia) * CONSUMO_POR_GRANIZADO
-
-        return no_cache(jsonify({
-            "por_hora": por_hora,
-            "total_hoy": total_dia,
-            "ventas_hoy": len(ventas_dia),
-            "comision_total": round(total_dia * COMISION_PORCENTAJE),
-            "litros_consumidos": litros_consumidos,
-            "litros_restantes": max(0, CAPACIDAD_TANQUE - litros_consumidos),
-            "porcentaje_meta": round((total_dia / META_DIARIA) * 100, 1)
-        }))
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/update_data', methods=['POST', 'GET'])
-@rate_limit(max_requests=120, window=60)
 def update_data():
-    """Registra una nueva venta (desde cámara GeoVision u otro origen)."""
+    """Ruta de respaldo manual"""
     try:
-        # Permitir precio personalizado si viene en el body
         precio = PRECIO_GRANIZADO
-        metodo = "GeoVision Automático"
-
-        if request.method == 'POST' and request.is_json:
-            body = request.get_json(silent=True) or {}
-            precio = int(body.get('valor_venta', PRECIO_GRANIZADO))
-            metodo = body.get('metodo', metodo)
-
         comision = round(precio * COMISION_PORCENTAJE)
-
+        
         ref = db.reference('ventas_granizados')
         nueva_venta = {
-            "timestamp": datetime.utcnow().isoformat() + 'Z',
+            "timestamp": obtener_hora_colombia().isoformat(),
             "valor_venta": precio,
             "comision_empleado": comision,
-            "metodo": metodo
+            "metodo": "Registro Manual"
         }
         ref.push(nueva_venta)
-        return jsonify({"status": "ok", "venta": nueva_venta}), 200
-
-    except Exception as e:
-        print(f"Error en recepción: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/reset_data', methods=['POST'])
-@rate_limit(max_requests=5, window=60)  # Límite más estricto para reinicios
-def reset_data():
-    """ELIMINA TODOS los registros de ventas. Requiere token de seguridad."""
-    try:
-        # Verificar token de seguridad
-        token = request.args.get('token')
-        if not token or token != RESET_TOKEN:
-            print(f"Intento de reinicio no autorizado desde IP: {request.remote_addr}")
-            return jsonify({"error": "No autorizado. Token inválido."}), 403
         
-        # Verificar que Firebase esté inicializado
-        if not cred:
-            return jsonify({"error": "Firebase no está configurado"}), 500
-        
-        ref = db.reference('ventas_granizados')
-        
-        # Obtener todas las ventas
-        datos = ref.get()
-        
-        if not datos:
-            return jsonify({
-                "status": "ok", 
-                "message": "No había datos para eliminar",
-                "eliminados": 0
-            }), 200
-        
-        # Contar cuántos registros se eliminarán
-        cantidad = len(datos)
-        
-        # Eliminar cada registro individualmente
-        for key in datos.keys():
-            ref.child(key).delete()
-        
-        print(f"✅ Datos reiniciados por {request.remote_addr} - {cantidad} registros eliminados")
-        
-        return jsonify({
-            "status": "ok", 
-            "message": f"Se eliminaron {cantidad} registros correctamente",
-            "eliminados": cantidad
-        }), 200
-        
-    except Exception as e:
-        print(f"Error en reset_data: {e}")
-        return jsonify({"error": f"Error interno: {str(e)}"}), 500
-
-
-@app.route('/export_csv')
-@rate_limit(max_requests=10, window=60)
-def export_csv():
-    """Exporta ventas a CSV descargable."""
-    try:
-        from flask import Response
-        ref = db.reference('ventas_granizados')
-        datos = ref.get()
-
-        fecha_filtro = request.args.get('fecha')
-        lista = list(datos.values()) if datos else []
-
-        if fecha_filtro:
-            try:
-                fecha_obj = datetime.strptime(fecha_filtro, '%Y-%m-%d').date()
-                lista = [
-                    v for v in lista
-                    if datetime.fromisoformat(v.get('timestamp', '')).date() == fecha_obj
-                ]
-            except ValueError:
-                pass
-
-        lista.sort(key=lambda x: x.get('timestamp', ''))
-
-        lines = ["Timestamp,Valor Venta,Comision Empleado,Metodo"]
-        for v in lista:
-            lines.append(
-                f"{v.get('timestamp','')},{v.get('valor_venta',0)},"
-                f"{v.get('comision_empleado',0)},{v.get('metodo','')}"
-            )
-
-        csv_content = "\n".join(lines)
-        filename = f"granizados_{fecha_filtro or date.today().isoformat()}.csv"
         return Response(
-            csv_content,
-            mimetype='text/csv',
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            json.dumps({"status": "ok", "venta": nueva_venta}, ensure_ascii=False),
+            mimetype='application/json',
+            status=200
         )
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-# Manejo de errores HTTP
-@app.errorhandler(429)
-def too_many_requests(e):
-    return jsonify({"error": "Demasiadas solicitudes. Espera un momento."}), 429
-
-@app.errorhandler(500)
-def server_error(e):
-    return jsonify({"error": "Error interno del servidor."}), 500
-
-
-# --- INICIO DEL SERVIDOR ---
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
-    app.run(debug=True, host='0.0.0.0', port=port)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
 
