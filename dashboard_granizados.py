@@ -17,7 +17,7 @@ PRECIO_GRANIZADO = 5000
 COMISION_PORCENTAJE = 0.10  # 10% de comisión para el empleado
 
 # --- CONFIGURACIÓN DE LA CÁMARA GEOVISION ---
-RTSP_URL = "rtsp://admin:4lph48390+@216.24.57.251:554/ch01/0"
+RTSP_URL = "rtsp://admin:4lph48390+@181.61.246.107:554/ch01/0"
 
 # --- INITIALIZAR FIREBASE ---
 try:
